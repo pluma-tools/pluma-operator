@@ -1,0 +1,227 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.15.0
+  name: istiooperators.install.istio.io
+spec:
+  group: install.istio.io
+  names:
+    kind: IstioOperator
+    listKind: IstioOperatorList
+    plural: istiooperators
+    shortNames:
+      - iop
+    singular: istiooperator
+  scope: Namespaced
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .status.status
+          name: status
+          type: string
+      name: v1alpha1
+      schema:
+        openAPIV3Schema:
+          description: IstioOperator is the Schema for the
+          properties:
+            apiVersion:
+              description: |-
+                APIVersion defines the versioned schema of this representation of an object.
+                Servers should convert recognized schemas to the latest internal value, and
+                may reject unrecognized values.
+                More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+              type: string
+            kind:
+              description: |-
+                Kind is a string value representing the REST resource this object represents.
+                Servers may infer this from the endpoint the client submits requests to.
+                Cannot be updated.
+                In CamelCase.
+                More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+              type: string
+            metadata:
+              type: object
+            spec:
+              properties:
+                compatibilityVersion:
+                  description: |-
+                    Compatibility version allows configuring Istio to behave like an older
+                    version by tuning various settings to align with a previous versions
+                    defaults. This accepts a `major.minor` format, such as `1.23`. This option
+                    is currently experimental.
+                  type: string
+                components:
+                  description: |-
+                    Kubernetes resource settings, enablement and component-specific settings
+                    that are not internal to the component.
+                  properties:
+                    fields:
+                      additionalProperties:
+                        description: |-
+                          `Value` represents a dynamically typed value which can be either
+                          null, a number, a string, a boolean, a recursive struct value, or a
+                          list of values. A producer of value is expected to set one of these
+                          variants. Absence of any variant indicates an error.
+
+
+                          The JSON representation for `Value` is JSON value.
+                        type: object
+                      description: Unordered map of dynamically typed values.
+                      type: object
+                  type: object
+                hub:
+                  description: Root for docker image paths e.g. `docker.io/istio`
+                  type: string
+                installPackagePath:
+                  description: |-
+                    Path for the install package. e.g.
+
+
+                    * /tmp/istio-installer/nightly (local file path)
+                  type: string
+                meshConfig:
+                  description: Config used by control plane components internally.
+                  properties:
+                    fields:
+                      additionalProperties:
+                        description: |-
+                          `Value` represents a dynamically typed value which can be either
+                          null, a number, a string, a boolean, a recursive struct value, or a
+                          list of values. A producer of value is expected to set one of these
+                          variants. Absence of any variant indicates an error.
+
+
+                          The JSON representation for `Value` is JSON value.
+                        type: object
+                      description: Unordered map of dynamically typed values.
+                      type: object
+                  type: object
+                namespace:
+                  description: |-
+                    Namespace to install control plane resources into. If unset, Istio will be
+                    installed into the same namespace as the `IstioOperator` CR. You must also
+                    set `values.global.istioNamespace` if you wish to install Istio in a custom
+                    namespace. If you have enabled CNI, you must  exclude this namespace by
+                    adding it to the list `values.cni.excludeNamespaces`.
+                  type: string
+                profile:
+                  description: |-
+                    Path or name for the profile e.g.
+
+
+                    * minimal (looks in profiles dir for a file called minimal.yaml)
+                    * /tmp/istio/install/values/custom/custom-install.yaml (local file path)
+
+
+                    default profile is used if this field is unset.
+                  type: string
+                resourceSuffix:
+                  description: |-
+                    $hide_from_docs
+                    Resource suffix is appended to all resources installed by each component.
+                    Never implemented; replaced by revision.
+
+
+                    Deprecated: Marked as deprecated in istio/v1alpha1/operator.proto.
+                  type: string
+                revision:
+                  description: |-
+                    Identify the revision this installation is associated with.
+                    This option is currently experimental.
+                  type: string
+                tag:
+                  description: Version tag for docker images e.g. `1.7.2`
+                  type: object
+                unvalidatedValues:
+                  description: |-
+                    Unvalidated overrides for default `values.yaml`. Used for custom templates
+                    where new parameters are added.
+                  properties:
+                    fields:
+                      additionalProperties:
+                        description: |-
+                          `Value` represents a dynamically typed value which can be either
+                          null, a number, a string, a boolean, a recursive struct value, or a
+                          list of values. A producer of value is expected to set one of these
+                          variants. Absence of any variant indicates an error.
+
+
+                          The JSON representation for `Value` is JSON value.
+                        type: object
+                      description: Unordered map of dynamically typed values.
+                      type: object
+                  type: object
+                values:
+                  description: |-
+                    Overrides for default `values.yaml`. This is a validated pass-through to
+                    Helm templates. See the [Helm installation
+                    options](https://istio.io/v1.5/docs/reference/config/installation-options/)
+                    for schema details. Anything that is available in `IstioOperatorSpec`
+                    should be set above rather than using the passthrough. This includes
+                    Kubernetes resource settings for components in `KubernetesResourcesSpec`.
+                  properties:
+                    fields:
+                      additionalProperties:
+                        description: |-
+                          `Value` represents a dynamically typed value which can be either
+                          null, a number, a string, a boolean, a recursive struct value, or a
+                          list of values. A producer of value is expected to set one of these
+                          variants. Absence of any variant indicates an error.
+
+
+                          The JSON representation for `Value` is JSON value.
+                        type: object
+                      description: Unordered map of dynamically typed values.
+                      type: object
+                  type: object
+              type: object
+            status:
+              description: Observed state of IstioOperator
+              properties:
+                componentStatus:
+                  additionalProperties:
+                    description: VersionStatus is the status and version of a component.
+                    properties:
+                      error:
+                        type: string
+                      status:
+                        description: Status describes the current state of a component.
+                        format: int32
+                        type: integer
+                      version:
+                        type: string
+                    type: object
+                  description: |-
+                    Individual status of each component controlled by the operator. The map key
+                    is the name of the component.
+                  type: object
+                message:
+                  description: |-
+                    Optional message providing additional information about the existing
+                    overall status.
+                  type: string
+                status:
+                  description: |-
+                    Overall status of all components controlled by the operator.
+
+
+                    * If all components have status `NONE`, overall status is `NONE`.
+                    * If all components are `HEALTHY`, overall status is `HEALTHY`.
+                    * If one or more components are `RECONCILING` and others are `HEALTHY`,
+                    overall status is `RECONCILING`.
+                    * If one or more components are `UPDATING` and others are `HEALTHY`,
+                    overall status is `UPDATING`.
+                    * If components are a mix of `RECONCILING`, `UPDATING` and `HEALTHY`,
+                    overall status is `UPDATING`.
+                    * If any component is in `ERROR` state, overall status is `ERROR`.
+                    * If further action is needed for reconciliation to proceed, overall status
+                    is `ACTION_REQUIRED`.
+                  format: int32
+                  type: integer
+              type: object
+          type: object
+      served: true
+      storage: true
+      subresources:
+        status: {}

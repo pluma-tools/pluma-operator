@@ -6,7 +6,6 @@ import (
 
 	"pluma.io/pluma-opeartor/config"
 
-	"istio.io/istio/operator/pkg/apis/istio/v1alpha1"
 	"pluma.io/pluma-opeartor/internal/controller"
 	"pluma.io/pluma-opeartor/internal/istio"
 
@@ -19,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	istiov1alpha1 "pluma.io/api/istio/v1alpha1"
 	operatorv1alpha1 "pluma.io/api/operator/v1alpha1"
 )
 
@@ -30,7 +30,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(operatorv1alpha1.AddToScheme(scheme))
-	utilruntime.Must(v1alpha1.SchemeBuilder.AddToScheme(scheme)) // Added IstioOperator scheme registration
+	utilruntime.Must(istiov1alpha1.AddToScheme(scheme))
 }
 
 func main() {

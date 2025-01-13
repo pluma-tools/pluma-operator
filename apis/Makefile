@@ -48,12 +48,13 @@ gen-client:
 		all \
 		pluma.io/api/client \
 		pluma.io/api \
-		"operator:v1alpha1" \
+		"operator:v1alpha1 istio:v1alpha1" \
 		--output-base $${d} \
 		--go-header-file hack/boilerplate.go.txt && \
 		rm -rf client && \
 		mv $${d}/pluma.io/api/client .
 	find client | grep -E "/typed/.*/fake/fake_.*.go" | xargs -I{} $(SEDI) 's/Group: "operator"/Group: "operator.pluma.io"/g' {}
+	find client | grep -E "/typed/.*/fake/fake_.*.go" | xargs -I{} $(SEDI) 's/Group: "istio"/Group: "install.istio.io"/g' {}
 	rm -rf "$${d}"
 	@if [ ! -d "client" ]; then \
 		echo "Error: Client code was not generated. Please check the following:"; \

@@ -24,6 +24,8 @@ import (
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	"k8s.io/client-go/testing"
 	clientset "pluma.io/api/client/clientset/versioned"
+	istiov1alpha1 "pluma.io/api/client/clientset/versioned/typed/istio/v1alpha1"
+	fakeistiov1alpha1 "pluma.io/api/client/clientset/versioned/typed/istio/v1alpha1/fake"
 	operatorv1alpha1 "pluma.io/api/client/clientset/versioned/typed/operator/v1alpha1"
 	fakeoperatorv1alpha1 "pluma.io/api/client/clientset/versioned/typed/operator/v1alpha1/fake"
 )
@@ -77,6 +79,11 @@ var (
 	_ clientset.Interface = &Clientset{}
 	_ testing.FakeClient  = &Clientset{}
 )
+
+// IstioV1alpha1 retrieves the IstioV1alpha1Client
+func (c *Clientset) IstioV1alpha1() istiov1alpha1.IstioV1alpha1Interface {
+	return &fakeistiov1alpha1.FakeIstioV1alpha1{Fake: &c.Fake}
+}
 
 // OperatorV1alpha1 retrieves the OperatorV1alpha1Client
 func (c *Clientset) OperatorV1alpha1() operatorv1alpha1.OperatorV1alpha1Interface {

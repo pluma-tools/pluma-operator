@@ -23,6 +23,7 @@ import (
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	istiov1alpha1 "pluma.io/api/istio/v1alpha1"
 	operatorv1alpha1 "pluma.io/api/operator/v1alpha1"
 )
 
@@ -30,6 +31,7 @@ var Scheme = runtime.NewScheme()
 var Codecs = serializer.NewCodecFactory(Scheme)
 var ParameterCodec = runtime.NewParameterCodec(Scheme)
 var localSchemeBuilder = runtime.SchemeBuilder{
+	istiov1alpha1.AddToScheme,
 	operatorv1alpha1.AddToScheme,
 }
 
