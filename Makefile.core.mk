@@ -1,18 +1,12 @@
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
-GOPROXY ?= http://10.6.100.13:8081/repository/go-proxy/
-GOSUMDB ?= sum.golang.org http://10.6.100.13:8081/repository/gosum/
-GOPRIVATE ?= gitlab.daocloud.cn
 
 BUILD_ARCH ?= linux/$(GOARCH)
 OFFLINE_ARCH ?= amd64
 
-HUB ?= release-ci.daocloud.io/mspider
-HUB_CI = release-ci.daocloud.io/mspider
-HELM_REPO ?= https://release-ci.daocloud.io/chartrepo/mspider
+HUB ?= ghcr.io/pluma-tools
 PROD_NAME ?= pluma-opretor
-MINOR_VERSION ?= v0.0
-VERSION ?= $(MINOR_VERSION)-dev-$(shell git rev-parse --short=8 HEAD)
+VERSION ?= 0.0.0-dev-$(shell git rev-parse --short=8 HEAD)
 
 REGISTRY_USER_NAME?=
 REGISTRY_PASSWORD?=
@@ -83,3 +77,29 @@ build-docker:
     		-t $(HUB)/$(PROD_NAME):$(VERSION) -f docker/Dockerfile .)
 
 .PHONY: build-docker
+
+release: build-docker build-chart push-chart
+
+.PHONY: release
+
+define in_place_replace
+	yq eval $(1) $(2) -i
+endef
+
+ifeq ($(shell uname),Darwin)
+SEDI=sed -i ""
+else
+SEDI=sed -i
+endif
+
+build-chart:
+	@rm -rf dist/$(PROD_NAME) && mkdir -p dist/$(PROD_NAME)
+	@cp -rf manifests/pluma/. dist/$(PROD_NAME)
+	$(SEDI) 's/version: .*/version: $(VERSION) # auto generated from build version/g' dist/$(PROD_NAME)/Chart.yaml
+	$(call in_place_replace, '.image.tag = "$(VERSION)"', dist/$(PROD_NAME)/values.yaml)
+
+	helm package dist/$(PROD_NAME) -d dist --version=$(VERSION)
+	@rm -rf dist/$(PROD_NAME)
+
+push-chart:
+  helm push ./dist/$(PROD_NAME)-$(VERSION).tgz oci://$(HUB)/$(PROD_NAME)
