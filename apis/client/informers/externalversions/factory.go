@@ -28,6 +28,7 @@ import (
 	cache "k8s.io/client-go/tools/cache"
 	versioned "pluma.io/api/client/clientset/versioned"
 	internalinterfaces "pluma.io/api/client/informers/externalversions/internalinterfaces"
+	istio "pluma.io/api/client/informers/externalversions/istio"
 	operator "pluma.io/api/client/informers/externalversions/operator"
 )
 
@@ -171,7 +172,12 @@ type SharedInformerFactory interface {
 	ForResource(resource schema.GroupVersionResource) (GenericInformer, error)
 	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
 
+	Istio() istio.Interface
 	Operator() operator.Interface
+}
+
+func (f *sharedInformerFactory) Istio() istio.Interface {
+	return istio.New(f, f.namespace, f.tweakListOptions)
 }
 
 func (f *sharedInformerFactory) Operator() operator.Interface {

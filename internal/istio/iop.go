@@ -7,11 +7,8 @@ import (
 	"reflect"
 	"time"
 
-	v1alpha12 "istio.io/api/operator/v1alpha1"
-
-	structpb "github.com/golang/protobuf/ptypes/struct"
-	"github.com/imdario/mergo"
-	structpb2 "google.golang.org/protobuf/types/known/structpb"
+	"istio.io/istio/operator/pkg/apis"
+	"istio.io/istio/operator/pkg/render"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/json"
@@ -25,8 +22,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	operatorv1alpha1 "istio.io/istio/operator/pkg/apis/istio/v1alpha1"
-	"pluma.io/api/operator/v1alpha1"
+	"google.golang.org/protobuf/types/known/structpb"
+	structpb2 "google.golang.org/protobuf/types/known/structpb"
+	istiov1alpha1 "pluma.io/api/istio/v1alpha1"
+
+	operatorv1alpha1 "pluma.io/api/operator/v1alpha1"
 )
 
 // IstioOperatorReconciler reconciles a IstioOperator object
@@ -39,15 +39,15 @@ type IstioOperatorReconciler struct {
 // SetupWithManager sets up the controller with the Manager.
 func (r *IstioOperatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&operatorv1alpha1.IstioOperator{}).
+		For(&istiov1alpha1.IstioOperator{}).
 		Complete(r)
 }
 
-func (r *IstioOperatorReconciler) reconcileDelete(ctx context.Context, iop *operatorv1alpha1.IstioOperator) (ctrl.Result, error) {
+func (r *IstioOperatorReconciler) reconcileDelete(ctx context.Context, iop *istiov1alpha1.IstioOperator) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
 	// Attempt to remove the HelmApp
-	hApp := &v1alpha1.HelmApp{}
+	hApp := &operatorv1alpha1.HelmApp{}
 	err := r.Get(ctx, client.ObjectKey{Namespace: iop.GetNamespace(), Name: iop.GetName()}, hApp)
 	if err != nil {
 		if !errors.IsNotFound(err) {
@@ -79,7 +79,7 @@ func (r *IstioOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	log := log.FromContext(ctx)
 
 	// Fetch the IstioOperator instance
-	iop := &operatorv1alpha1.IstioOperator{}
+	iop := &istiov1alpha1.IstioOperator{}
 	if err := r.Get(ctx, req.NamespacedName, iop); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -98,7 +98,7 @@ func (r *IstioOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// Convert IstioOperator to HelmApp
-	helmApp, err := r.convertIopToHelmApp(iop)
+	helmApp, err := r.convertIopToHelmApp(ctx, iop)
 	if err != nil {
 		log.Error(err, "Failed to convert IstioOperator to HelmApp")
 		return ctrl.Result{}, err
@@ -111,7 +111,7 @@ func (r *IstioOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	status := r.calculateOverallPhase(ctx, iop)
-	iop.Status = &v1alpha12.InstallStatus{
+	iop.Status = &istiov1alpha1.InstallStatus{
 		Status: status,
 	}
 	if err := r.Status().Update(ctx, iop); err != nil {
@@ -119,14 +119,13 @@ func (r *IstioOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	switch status {
-	case v1alpha12.InstallStatus_ERROR:
+	case istiov1alpha1.InstallStatus_ERROR:
 		return ctrl.Result{RequeueAfter: failedAfter}, nil
-	case v1alpha12.InstallStatus_RECONCILING, v1alpha12.InstallStatus_NONE:
+	case istiov1alpha1.InstallStatus_RECONCILING, istiov1alpha1.InstallStatus_NONE:
 		return ctrl.Result{RequeueAfter: reconcileAfter}, nil
 	default:
 		return ctrl.Result{}, nil
 	}
-	return ctrl.Result{}, nil
 }
 
 const (
@@ -135,32 +134,32 @@ const (
 	reconcileAfter    = 20 * time.Second
 )
 
-func (r *IstioOperatorReconciler) calculateOverallPhase(ctx context.Context, iop *operatorv1alpha1.IstioOperator) v1alpha12.InstallStatus_Status {
+func (r *IstioOperatorReconciler) calculateOverallPhase(ctx context.Context, iop *istiov1alpha1.IstioOperator) istiov1alpha1.InstallStatus_Status {
 	if iop == nil {
-		return v1alpha12.InstallStatus_NONE
+		return istiov1alpha1.InstallStatus_NONE
 	}
-	helmApp := &v1alpha1.HelmApp{}
+	helmApp := &operatorv1alpha1.HelmApp{}
 	err := r.Get(ctx, client.ObjectKey{Namespace: iop.GetNamespace(), Name: iop.GetName()}, helmApp)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			return v1alpha12.InstallStatus_RECONCILING
+			return istiov1alpha1.InstallStatus_RECONCILING
 		}
-		return v1alpha12.InstallStatus_NONE
+		return istiov1alpha1.InstallStatus_NONE
 	}
 
-	phase := v1alpha1.Phase_UNKNOWN
+	phase := operatorv1alpha1.Phase_UNKNOWN
 	if helmApp.Status != nil {
 		phase = helmApp.Status.GetPhase()
 	}
 	switch phase {
-	case v1alpha1.Phase_UNKNOWN:
-		return v1alpha12.InstallStatus_NONE
-	case v1alpha1.Phase_SUCCEEDED:
-		return v1alpha12.InstallStatus_HEALTHY
-	case v1alpha1.Phase_FAILED:
-		return v1alpha12.InstallStatus_ERROR
+	case operatorv1alpha1.Phase_UNKNOWN:
+		return istiov1alpha1.InstallStatus_NONE
+	case operatorv1alpha1.Phase_SUCCEEDED:
+		return istiov1alpha1.InstallStatus_HEALTHY
+	case operatorv1alpha1.Phase_FAILED:
+		return istiov1alpha1.InstallStatus_ERROR
 	default:
-		return v1alpha12.InstallStatus_RECONCILING
+		return istiov1alpha1.InstallStatus_RECONCILING
 	}
 }
 
@@ -179,250 +178,213 @@ func structToMap(in any) map[string]interface{} {
 	return res
 }
 
-func (r *IstioOperatorReconciler) convertIopToHelmApp(in *operatorv1alpha1.IstioOperator) (*v1alpha1.HelmApp, error) {
+func (r *IstioOperatorReconciler) convertIopToHelmApp(ctx context.Context, in *istiov1alpha1.IstioOperator) (*operatorv1alpha1.HelmApp, error) {
+	log := log.FromContext(ctx)
+
 	if in == nil || in.Spec == nil {
-		return nil, fmt.Errorf("iop must required")
+		return nil, fmt.Errorf("iop is required")
+	}
+
+	tempFile, err := os.CreateTemp("", "iop-*.yaml")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer func() {
+		if err := tempFile.Close(); err != nil {
+			log.Error(err, "Failed to close temp file")
+		}
+		if err := os.Remove(tempFile.Name()); err != nil {
+			log.Error(err, "Failed to remove temp file")
+		}
+	}()
+
+	data, err := yaml.Marshal(in)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal IstioOperator to YAML: %w", err)
+	}
+
+	if _, err := tempFile.Write(data); err != nil {
+		return nil, fmt.Errorf("failed to write to temp file: %w", err)
+	}
+
+	mRes, err := render.Migrate([]string{tempFile.Name()}, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to migrate IstioOperator: %w", err)
 	}
 
 	buildName := func(p string) string {
 		return fmt.Sprintf("iop-%s-%s", in.GetName(), p)
 	}
-	// todo: add default config
+
 	version := "1.21.1"
-	if in.Spec.GetTag().GetStringValue() != "" {
-		version = in.Spec.GetTag().GetStringValue()
+	if tag := in.Spec.GetTag().GetStringValue(); tag != "" {
+		version = tag
 	}
 
-	// init component template
-	base := &v1alpha1.HelmComponent{
-		Name:    buildName("base"),
-		Chart:   "base",
-		Version: version,
-	}
-	istiodComponent := &v1alpha1.HelmComponent{
-		Name:    buildName("istiod"),
-		Chart:   "istiod",
-		Version: version,
-	}
-	ingressGateway := v1alpha1.HelmComponent{
-		// name need to custom defined
-		Chart:   "gateway",
-		Version: version,
-	}
-	cni := &v1alpha1.HelmComponent{}
-	ztunnel := &v1alpha1.HelmComponent{}
-
-	// merge iop profile
-	iop, err := r.mergeIOPWithProfile(in)
-	if err != nil {
-		return nil, err
-	}
-
-	// parse global values
+	components := make([]*operatorv1alpha1.HelmComponent, 0, len(mRes.Components))
 	var globalValues *structpb.Struct
-
-	if iop.Spec.Values == nil {
-		iop.Spec.Values = &structpb.Struct{Fields: make(map[string]*structpb.Value, 0)}
-	}
-	if global := iop.Spec.GetValues().GetFields()["global"]; global != nil {
-		gv := global.GetStructValue()
-		// render hub & tag
-		if h := iop.Spec.GetHub(); h != "" {
-			// Set hub in global structure
-			gv.Fields["hub"] = structpb2.NewStringValue(h)
-		}
-	}
-	if rv := iop.Spec.GetRevision(); rv != "" {
-		iop.Spec.Values.Fields["revision"] = structpb2.NewStringValue(rv)
-	}
-	globalValues = iop.Spec.GetValues()
-
-	// parse components
-	components := make([]*v1alpha1.HelmComponent, 0)
-	if iop.Spec.GetComponents() != nil {
-		// base
-		if iop.Spec.GetComponents().GetBase().GetEnabled().GetValue() {
-			components = append(components, base)
-		}
-
-		// istiod
-		if iop.Spec.GetComponents().GetPilot().GetEnabled().GetValue() {
-			// Merge component-specific values
-			componentValues := make(map[string]interface{})
-
-			// mesh config
-			if mc := iop.Spec.GetMeshConfig(); mc != nil {
-				componentValues["meshConfig"] = structToMap(mc)
+	for _, cInfo := range mRes.Components {
+		if globalValues == nil {
+			vals, _ := cInfo.Values.GetPathMap("spec.values")
+			values := structToMap(vals)
+			componentValuesStruct, err := structpb.NewStruct(values)
+			if err != nil {
+				log.Error(err, "Failed to convert component values to structpb.Struct", "values", values)
+			} else {
+				globalValues = componentValuesStruct
 			}
-			if mc := iop.Spec.GetValues().GetFields()["meshConfig"]; mc != nil {
-				if componentValues["meshConfig"] == nil {
-					componentValues["meshConfig"] = mc.GetStructValue().AsMap()
-				} else {
-					if cMC, ok := componentValues["meshConfig"].(map[string]any); ok {
-						for k, v := range mc.GetStructValue().AsMap() {
-							cMC[k] = v
-						}
+		}
+
+		componentValues := make(map[string]interface{})
+		if isGateway(cInfo) {
+			gwComp := &operatorv1alpha1.HelmComponent{
+				Name:    cInfo.ComponentSpec.Name,
+				Chart:   "gateway",
+				Version: version,
+			}
+
+			// Extract gateway configuration
+			componentsKey := fmt.Sprintf("spec.components.%s", cInfo.Component.SpecName)
+			if componentsGateway, ok := cInfo.Values.GetPath(componentsKey); ok {
+				// Convert to GatewayComponentSpec using JSON marshal/unmarshal
+				jsonBytes, err := json.Marshal(componentsGateway)
+				if err != nil {
+					log.Error(err, "Failed to marshal gateway", componentsKey)
+					continue
+				}
+
+				var gws []*apis.GatewayComponentSpec
+				if err := json.Unmarshal(jsonBytes, &gws); err != nil {
+					log.Error(err, "Failed to unmarshal to GatewayComponentSpec")
+					continue
+				}
+
+				if len(gws) > 0 {
+					k8sValuesMap := structToMap(gws[0].Kubernetes)
+					for k, v := range k8sValuesMap {
+						componentValues[k] = v
 					}
 				}
 			}
 
-			// sidecarInjectorWebhook
-			if sw := iop.Spec.GetValues().GetFields()["sidecarInjectorWebhook"]; sw != nil {
-				componentValues["sidecarInjectorWebhook"] = sw.GetStructValue().AsMap()
-			}
-
-			// Merge values from iop.Spec.Values.Pilot
-			if pilot := iop.Spec.GetValues().GetFields()["pilot"]; pilot != nil {
-				componentValues["pilot"] = pilot.GetStructValue().AsMap()
-			}
-
-			// Merge component-specific values
-			if iopK8s := iop.Spec.GetComponents().GetPilot().GetK8S(); iopK8s != nil {
-				if iopK8s.Affinity != nil {
-
-					componentValues["affinity"] = structToMap(iopK8s.Affinity)
-
+			// spec.values.gateways.istio-ingressgateway.autoscaleEnabled
+			// spec.values.gateways.istio-egressgateway.autoscaleEnabled
+			autoscaleEnabledKey := fmt.Sprintf("spec.values.%s.autoscaleEnabled", cInfo.Component.ToHelmValuesTreeRoot)
+			minReplicasKey := fmt.Sprintf("spec.values.%s.autoscaleMin", cInfo.Component.ToHelmValuesTreeRoot)
+			// Configure autoscaling settings
+			if enabled := cInfo.Values.GetPathBool(autoscaleEnabledKey); enabled {
+				autoscaling := map[string]interface{}{
+					"enabled": enabled,
 				}
-				if iopK8s.Resources != nil {
-					if componentValues["pilot"] == nil {
-						componentValues["pilot"] = map[string]interface{}{
-							"resources": iopK8s.Resources,
-						}
-					} else {
-						pilot, ok := componentValues["pilot"].(map[string]any)
-						if !ok {
-							return nil, fmt.Errorf("componentValues['pilot'] is not a map[string]any")
-						}
-						pilot["resources"] = structToMap(iopK8s.Resources)
-						componentValues["pilot"] = pilot
-					}
+
+				if minReplicas := cInfo.Values.GetPathString(minReplicasKey); minReplicas != "" {
+					autoscaling["minReplicas"] = minReplicas
+				}
+
+				componentValues["autoscaling"] = autoscaling
+			}
+
+			// Convert values to struct
+			if componentValuesStruct, err := structpb2.NewStruct(componentValues); err != nil {
+				log.Error(err, "Failed to convert gateway component values to struct")
+			} else {
+				gwComp.ComponentValues = componentValuesStruct
+				components = append(components, gwComp)
+			}
+			continue
+		}
+
+		componentK8SKey := fmt.Sprintf("spec.components.%s.k8s", cInfo.Component.SpecName)
+		if componentsGateway, ok := cInfo.Values.GetPath(componentK8SKey); ok {
+			// Convert to GatewayComponentSpec using JSON marshal/unmarshal
+			jsonBytes, err := json.Marshal(componentsGateway)
+			if err != nil {
+				log.Error(err, "Failed to marshal", componentK8SKey)
+				continue
+			}
+
+			var k8s apis.KubernetesResources
+			if err := json.Unmarshal(jsonBytes, &k8s); err != nil {
+				log.Error(err, "Failed to unmarshal to GatewayComponentSpec")
+				continue
+			}
+
+			k8sValuesMap := structToMap(&k8s)
+			iopC := getComponent(cInfo.Component.SpecName)
+			if iopC.HelmBaseRootKey != "" {
+				baseValues := map[string]interface{}{}
+				for k, v := range k8sValuesMap {
+					baseValues[k] = v
+				}
+				componentValues[iopC.HelmBaseRootKey] = baseValues
+			} else {
+				for k, v := range k8sValuesMap {
+					componentValues[k] = v
 				}
 			}
-			// Convert componentValues to structpb.Struct
+		}
+
+		name := cInfo.Component.ReleaseName
+		if name == "" {
+			log.Error(fmt.Errorf("invalid component name"), "Component name is empty")
+			continue
+		}
+
+		helmComp := &operatorv1alpha1.HelmComponent{
+			Name:    buildName(name),
+			Chart:   name,
+			Version: version,
+		}
+		if len(componentValues) > 0 {
 			componentValuesStruct, err := structpb2.NewStruct(componentValues)
 			if err != nil {
-				return nil, fmt.Errorf("failed to convert component values to struct: %w", err)
+				log.Error(err, "Failed to convert gateway component values to struct")
 			}
-			istiodComponent.ComponentValues = componentValuesStruct
-
-			components = append(components, istiodComponent)
+			helmComp.ComponentValues = componentValuesStruct
 		}
 
-		buildGw := func(gw *v1alpha12.GatewaySpec) error {
-			if !gw.GetEnabled().GetValue() {
-				return nil
-			}
-			if gw.GetName() == "" {
-				// must have name
-				return nil
-			}
-			newGw := ingressGateway
-			newGw.Name = gw.GetName()
+		components = append(components, helmComp)
+	}
 
-			// Merge component-specific values
-			componentValues := make(map[string]interface{})
-			if gw.K8S != nil {
-				if gw.K8S.Affinity != nil {
-					componentValues["affinity"] = structToMap(gw.K8S.Affinity)
-				}
-				if gw.K8S.Resources != nil {
-					componentValues["resources"] = structToMap(gw.K8S.Resources)
-				}
-			}
-
-			// Merge values from iop.Spec.Values.Gateways
-			if gateways := iop.Spec.GetValues().GetFields()["gateways"]; gateways != nil {
-				if ingressGw := gateways.GetStructValue().GetFields()["istio-ingressgateway"]; ingressGw != nil {
-					if autoscaleEnabled := ingressGw.GetStructValue().GetFields()["autoscaleEnabled"]; autoscaleEnabled != nil {
-						componentValues["autoscaling"] = map[string]interface{}{
-							"enabled": autoscaleEnabled.GetBoolValue(),
-						}
-						if autoscaleMin := ingressGw.GetStructValue().GetFields()["autoscaleMin"]; autoscaleMin != nil {
-							if _, ok := componentValues["autoscaling"]; !ok {
-								componentValues["autoscaling"] = make(map[string]interface{})
-							}
-							componentValues["autoscaling"].(map[string]interface{})["minReplicas"] = autoscaleMin.GetNumberValue()
-						}
-					}
-				}
-			}
-
-			// Convert componentValues to structpb.Struct
-			componentValuesStruct, err := structpb2.NewStruct(componentValues)
-			if err != nil {
-				return fmt.Errorf("failed to convert component values to struct: %w", err)
-			}
-			newGw.ComponentValues = componentValuesStruct
-			components = append(components, &newGw)
-			return nil
-		}
-		// ingress
-		for _, gw := range iop.Spec.GetComponents().GetIngressGateways() {
-			if err := buildGw(gw); err != nil {
-				return nil, err
-			}
-		}
-		for _, gw := range iop.Spec.GetComponents().GetEgressGateways() {
-			if err := buildGw(gw); err != nil {
-				return nil, err
-			}
-		}
-
-		// cni
-		if iop.Spec.GetComponents().GetCni().GetEnabled().GetValue() {
-			// todo ambient
-			components = append(components, cni)
-		}
-
-		// ztunnel
-		if iop.Spec.GetComponents().GetZtunnel().GetEnabled().GetValue() {
-			// todo ambient
-			components = append(components, ztunnel)
-		}
+	if len(components) == 0 {
+		return nil, fmt.Errorf("no valid components found")
 	}
 
 	repo := "https://istio-release.storage.googleapis.com/charts"
-	happ := &v1alpha1.HelmApp{
+	happ := &operatorv1alpha1.HelmApp{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      iop.GetName(),
-			Namespace: iop.GetNamespace(),
+			Name:      in.GetName(),
+			Namespace: in.GetNamespace(),
 			Labels: map[string]string{
-				constants.ManagedLabel: constants.ManagedLabelValue,
-				// default
+				constants.ManagedLabel:           constants.ManagedLabelValue,
 				constants.AllowForceUpgradeLabel: "true",
-				constants.SourceFromIOP:          fmt.Sprintf("%s", in.GetName()),
+				constants.SourceFromIOP:          in.GetName(),
 			},
 		},
-		Spec: &v1alpha1.HelmAppSpec{
+		Spec: &operatorv1alpha1.HelmAppSpec{
 			Components:   components,
 			GlobalValues: globalValues,
-			Repo: &v1alpha1.HelmRepo{
+			Repo: &operatorv1alpha1.HelmRepo{
 				Name: "istio",
 				Url:  repo,
 			},
 		},
 	}
 
-	if iop.GetLabels() != nil {
-		if v, ok := iop.GetLabels()[constants.AllowForceUpgradeLabel]; ok {
+	if labels := in.GetLabels(); labels != nil {
+		if v, ok := labels[constants.AllowForceUpgradeLabel]; ok {
 			happ.Labels[constants.AllowForceUpgradeLabel] = v
 		}
 	}
 
-	wantYAML, err := yaml.Marshal(happ)
-	if err != nil {
-		fmt.Sprintf("Failed to marshal to YAML: %v", err)
-	}
-	fmt.Sprintf(" marshal want to YAML: %s", wantYAML)
-
 	return happ, nil
 }
 
-func (r *IstioOperatorReconciler) createOrUpdateHelmApp(ctx context.Context, helmApp *v1alpha1.HelmApp) error {
+func (r *IstioOperatorReconciler) createOrUpdateHelmApp(ctx context.Context, helmApp *operatorv1alpha1.HelmApp) error {
 	log := log.FromContext(ctx)
 
 	// Check if the HelmApp already exists
-	existingHelmApp := &v1alpha1.HelmApp{}
+	existingHelmApp := &operatorv1alpha1.HelmApp{}
 	err := r.Get(ctx, client.ObjectKey{Namespace: helmApp.Namespace, Name: helmApp.Name}, existingHelmApp)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -455,43 +417,4 @@ func (r *IstioOperatorReconciler) createOrUpdateHelmApp(ctx context.Context, hel
 	}
 
 	return nil
-}
-
-func (r *IstioOperatorReconciler) mergeIOPWithProfile(iop *operatorv1alpha1.IstioOperator) (*operatorv1alpha1.IstioOperator, error) {
-	if iop == nil || iop.Spec == nil {
-		return nil, fmt.Errorf("input IstioOperator is nil or has nil Spec")
-	}
-
-	profileName := "default"
-	if iop.Spec.Profile != "" {
-		profileName = iop.Spec.Profile
-	}
-
-	// Read the profile file
-	profilePath := fmt.Sprintf("%s/%s.yaml", r.Config.ProfilesDir, profileName)
-	profileData, err := os.ReadFile(profilePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read profile file %s: %w", profilePath, err)
-	}
-
-	// Unmarshal the profile into an IstioOperator
-	profileIOP := &operatorv1alpha1.IstioOperator{}
-	if err := yaml.Unmarshal(profileData, profileIOP); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal profile data: %w", err)
-	}
-
-	// Merge the profile IOP with the input IOP
-	mergedIOP := profileIOP.DeepCopy()
-	if err := mergo.Merge(iop, mergedIOP); err != nil {
-		return nil, fmt.Errorf("failed to merge IOPs: %w", err)
-	}
-
-	// todo remove: Test
-	wantYAML, err := yaml.Marshal(iop)
-	if err != nil {
-		fmt.Sprintf("Failed to marshal to YAML: %v", err)
-	}
-	fmt.Sprintf(" marshal want to YAML: %s", wantYAML)
-
-	return iop.DeepCopy(), nil
 }

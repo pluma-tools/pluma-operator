@@ -22,7 +22,8 @@ import (
 
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
-	v1alpha1 "pluma.io/api/operator/v1alpha1"
+	v1alpha1 "pluma.io/api/istio/v1alpha1"
+	operatorv1alpha1 "pluma.io/api/operator/v1alpha1"
 )
 
 // GenericInformer is type of SharedIndexInformer which will locate and delegate to other
@@ -51,8 +52,12 @@ func (f *genericInformer) Lister() cache.GenericLister {
 // TODO extend this to unknown resources with a client pool
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
-	// Group=operator, Version=v1alpha1
-	case v1alpha1.SchemeGroupVersion.WithResource("helmapps"):
+	// Group=istio, Version=v1alpha1
+	case v1alpha1.SchemeGroupVersion.WithResource("istiooperators"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Istio().V1alpha1().IstioOperators().Informer()}, nil
+
+		// Group=operator, Version=v1alpha1
+	case operatorv1alpha1.SchemeGroupVersion.WithResource("helmapps"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Operator().V1alpha1().HelmApps().Informer()}, nil
 
 	}

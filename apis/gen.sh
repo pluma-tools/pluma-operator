@@ -3,4 +3,5 @@
 set -eu
 
 buf generate --timeout 10m -v \
-  --path operator
+  --path operator \
+  --path istio

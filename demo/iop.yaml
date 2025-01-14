@@ -6,16 +6,16 @@ metadata:
 spec:
   components:
     ingressGateways:
-    - k8s:
-        resources:
-          limits:
-            cpu: 1000m
-            memory: 900Mi
-          requests:
-            cpu: 50m
-            memory: 50Mi
-      name: istio-ingressgateway
-      enabled: true
+      - k8s:
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 900Mi
+            requests:
+              cpu: 50m
+              memory: 50Mi
+        name: istio-ingressgateway
+        enabled: true
     pilot:
       k8s:
         resources:
@@ -29,8 +29,8 @@ spec:
   meshConfig:
     defaultConfig:
       extraStatTags:
-      - destination_mesh_id
-      - source_mesh_id
+        - destination_mesh_id
+        - source_mesh_id
       proxyMetadata:
         ISTIO_META_DNS_AUTO_ALLOCATE: "true"
         ISTIO_META_DNS_CAPTURE: "true"
@@ -39,17 +39,17 @@ spec:
         sampling: 100
     enableTracing: true
     extensionProviders:
-    - name: otel
-      opentelemetry:
-        port: 4317
-        service: insight-agent-opentelemetry-collector.insight-system.svc.cluster.local
+      - name: otel
+        opentelemetry:
+          port: 4317
+          service: insight-agent-opentelemetry-collector.insight-system.svc.cluster.local
   namespace: istio-system
   profile: default
   tag: 1.22.2
   values:
     gateways:
       istio-ingressgateway:
-        autoscaleEnabled: "true"
+        autoscaleEnabled: true
         autoscaleMin: "1"
     global:
       istioNamespace: istio-system
@@ -69,7 +69,7 @@ spec:
       outboundTrafficPolicy:
         mode: ALLOW_ANY
     pilot:
-      autoscaleEnabled: "true"
+      autoscaleEnabled: true
       autoscaleMin: "1"
       replicaCount: "1"
     sidecarInjectorWebhook:
