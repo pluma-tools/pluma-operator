@@ -13,7 +13,7 @@ import (
 
 	errors2 "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"pluma.io/pluma-opeartor/internal/pkg/tools"
+	"pluma.io/pluma-operator/internal/pkg/tools"
 
 	"github.com/hashicorp/go-multierror"
 	helmaction "helm.sh/helm/v3/pkg/action"
@@ -26,7 +26,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/resource"
 	operatorv1alpha1 "pluma.io/api/operator/v1alpha1"
-	"pluma.io/pluma-opeartor/internal/pkg/constants"
+	"pluma.io/pluma-operator/internal/pkg/constants"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"

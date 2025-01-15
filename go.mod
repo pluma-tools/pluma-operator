@@ -1,4 +1,4 @@
-module pluma.io/pluma-opeartor
+module pluma.io/pluma-operator
 
 go 1.23.1
 

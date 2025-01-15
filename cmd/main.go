@@ -4,10 +4,10 @@ import (
 	"flag"
 	"os"
 
-	"pluma.io/pluma-opeartor/config"
+	"pluma.io/pluma-operator/config"
 
-	"pluma.io/pluma-opeartor/internal/controller"
-	"pluma.io/pluma-opeartor/internal/istio"
+	"pluma.io/pluma-operator/internal/controller"
+	"pluma.io/pluma-operator/internal/istio"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
