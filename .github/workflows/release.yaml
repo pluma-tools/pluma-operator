@@ -32,13 +32,14 @@ jobs:
           cache: true
       - name: Get tag name
         id: get_tag
-        shell: /usr/bin/bash -e {0}
         run: |
           if [[ $GITHUB_REF == refs/tags/* ]]; then
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
             echo "Building release version ${GITHUB_REF#refs/tags/}"
           else
+            echo "tag=0.0.0-dev-$(git rev-parse --short=8 HEAD)" >> $GITHUB_OUTPUT
             echo "Building dev version"
+        shell: /usr/bin/bash -e {0}
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
