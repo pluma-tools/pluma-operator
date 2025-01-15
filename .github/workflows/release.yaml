@@ -37,7 +37,6 @@ jobs:
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
             echo "Building release version ${GITHUB_REF#refs/tags/}"
           else
-            echo "tag=0.0.0-dev-$(git rev-parse --short=8 HEAD)" >> $GITHUB_OUTPUT
             echo "Building dev version"
           fi
         shell: /usr/bin/bash -e {0}
@@ -57,4 +56,5 @@ jobs:
           HUB: ghcr.io/pluma-tools
           PLATFORMS: linux/amd64,linux/arm64
           PUSH_IMAGES: 1
-          VERSION: ${{ steps.get_tag.outputs.tag }}
+          ${{ if startsWith(github.ref, 'refs/tags/') }}:
+            VERSION: ${{ steps.get_tag.outputs.tag }}
