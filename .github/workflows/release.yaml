@@ -32,6 +32,7 @@ jobs:
           cache: true
       - name: Get tag name
         id: get_tag
+        shell: /usr/bin/bash -e {0}
         run: |
           if [[ $GITHUB_REF == refs/tags/* ]]; then
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
