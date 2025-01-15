@@ -38,7 +38,7 @@ jobs:
             echo "Building release version ${GITHUB_REF#refs/tags/}"
           elif [[ "${{ github.event.label.name }}" == "deploy" ]]; then
             echo "tag=0.0.0-dev-$(git rev-parse --short=8 HEAD)" >> $GITHUB_OUTPUT
-            echo "Building development version 0.0.0-dev-$(git rev-parse --short=8 HEAD)"
+            echo "Building development version"
           fi
       - uses: docker/login-action@v3
         with:
