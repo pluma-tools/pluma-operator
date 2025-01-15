@@ -3,7 +3,7 @@
 # Declare variables to be passed into your templates.
 global:
   # global.imageRegistry: Global Docker image registry
-  prod: pluma-opretor
+  prod: pluma-operator
   imageRegistry: ghcr.io/pluma-tools
   enabledIstioOperatorCRD: false
 
@@ -11,7 +11,7 @@ replicaCount: 1
 
 image:
   registry: ''
-  repository: pluma-opretor
+  repository: pluma-operator
   # Overrides the image tag whose default is the chart appVersion.
   # tag: "v0.0-dev-24e914ef"
   tag: "v0.0-dev-8b02363a"

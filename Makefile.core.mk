@@ -5,7 +5,7 @@ BUILD_ARCH ?= linux/$(GOARCH)
 OFFLINE_ARCH ?= amd64
 
 HUB ?= ghcr.io/pluma-tools
-PROD_NAME ?= pluma-opretor
+PROD_NAME ?= pluma-operator
 VERSION ?= 0.0.0-dev-$(shell git rev-parse --short=8 HEAD)
 
 REGISTRY_USER_NAME?=
@@ -37,7 +37,7 @@ ctl-manifests:
 format-shell:
 	shfmt -i 4 -l -w ./scripts
 format-go:
-	goimports -local gitlab.daocloud.cn/nicole.li/pluma-opeartor -w .
+	goimports -local gitlab.daocloud.cn/nicole.li/pluma-operator -w .
 	gofmt -w .
 
 

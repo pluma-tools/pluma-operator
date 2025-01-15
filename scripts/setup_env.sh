@@ -48,7 +48,7 @@ if [[ "${IMAGE_VERSION:-}" == "" ]]; then
 fi
 
 if [[ "${IMAGE_NAME:-}" == "" ]]; then
-    export IMAGE_NAME=release-ci.daocloud.io/mspider/mspider
+    export IMAGE_NAME=ghcr.io/pluma-tools/pluma-operator
 fi
 
 TIMEZONE=$(readlink "$readlink_flags" /etc/localtime | sed -e 's/^.*zoneinfo\///')

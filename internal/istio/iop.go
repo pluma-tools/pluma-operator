@@ -12,8 +12,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/json"
-	"pluma.io/pluma-opeartor/config"
-	"pluma.io/pluma-opeartor/internal/pkg/constants"
+	"pluma.io/pluma-operator/config"
+	"pluma.io/pluma-operator/internal/pkg/constants"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/yaml"
 
