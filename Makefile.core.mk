@@ -32,7 +32,7 @@ generate:
 
 ctl-manifests:
 	make -C apis manifests
-	bash ./scripts/copy-crds.sh apis/config/crd/bases/operator.pluma.io_helmapps.yaml manifests/pluma/templates
+	bash ./scripts/copy-crds.sh apis/config/crd/bases/operator.pluma.io_helmapps.yaml manifests/pluma-operator/templates
 
 format-shell:
 	shfmt -i 4 -l -w ./scripts
@@ -94,7 +94,7 @@ endif
 
 build-chart:
 	@rm -rf dist/$(PROD_NAME) && mkdir -p dist/$(PROD_NAME)
-	@cp -rf manifests/pluma/. dist/$(PROD_NAME)
+	@cp -rf manifests/pluma-operator/. dist/$(PROD_NAME)
 	$(SEDI) 's/version: .*/version: $(VERSION) # auto generated from build version/g' dist/$(PROD_NAME)/Chart.yaml
 	$(call in_place_replace, '.image.tag = "$(VERSION)"', dist/$(PROD_NAME)/values.yaml)
 
