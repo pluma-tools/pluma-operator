@@ -1,29 +1,25 @@
 # Pluma Operator
 
-Helm operator and Istio operator
+A Comprehensive Helm and Istio Operator
 
-Pluma Operator is a Kubernetes operator that provides advanced component management capabilities using Helm charts. It offers continuous lifecycle management for installed components and supports the conversion of Istio Custom Resource Definitions (CRDs) into HelmApp resources for streamlined Istio installation.
+The Pluma Operator is a sophisticated Kubernetes operator designed to enhance component management through the use of Helm charts. It ensures continuous lifecycle management for components and facilitates the transformation of Istio Custom Resource Definitions (CRDs) into HelmApp resources, simplifying Istio installations.
 
-## Key Capabilities
+## Key Features
 
-1. **Helm Integration**: Utilizes Helm charts for efficient and standardized component deployment.
-2. **Lifecycle Management**: Provides ongoing maintenance and updates for installed components.
-3. **Istio Support**: Converts Istio CRDs to HelmApp resources, enabling suite-based Istio installation.
-4. **Kubernetes Native**: Seamlessly integrates with Kubernetes environments for streamlined operations.
+1. **Helm Integration**: Leverages Helm charts for consistent and efficient component deployment.
+2. **Lifecycle Management**: Ensures regular maintenance and updates for deployed components.
+3. **Istio Support**: Transforms Istio CRDs into HelmApp resources, supporting suite-based Istio installations.
+4. **Kubernetes Native**: Fully integrates with Kubernetes environments for seamless operations.
 
-## install
+## Installation
 
-To install the Pluma Operator using Helm, execute the following command. This command will perform an upgrade if the Pluma Operator is already installed or install it if it’s not present. It will also automatically create the `pluma-system` namespace if it doesn't exist.
+To install the Pluma Operator, run the following commands:
 
 ```bash
-# optional
-kubectl label crd istiooperators.install.istio.io app.kubernetes.io/managed-by=Helm
-kubectl annotate crd istiooperators.install.istio.io meta.helm.sh/release-name=pluma-operator
-kubectl annotate crd istiooperators.install.istio.io meta.helm.sh/release-namespace=pluma-system
-
-
-# install
-helm upgrade --install pluma-operator ./manifests/pluma --create-namespace --namespace pluma-system
+export VERSION=v0.1.0
+helm repo add pluma-charts https://pluma-tools.github.io/charts
+helm repo update
+helm upgrade --install pluma-operator pluma-charts/pluma-operator --version=${VERSION} --create-namespace --namespace pluma-system
 ```
 
 ## Getting Started
@@ -38,7 +34,7 @@ Use IstioOperator CRD
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 metadata:
-  name: nicole-dmesh-mspider-mcpc
+  name: demo-mesh
   namespace: istio-system
 spec:
   components:
@@ -62,61 +58,13 @@ spec:
           requests:
             cpu: 200m
             memory: 200Mi
-  hub: release-ci.daocloud.io/mspider
-  meshConfig:
-    defaultConfig:
-      extraStatTags:
-        - destination_mesh_id
-        - source_mesh_id
-      proxyMetadata:
-        ISTIO_META_DNS_AUTO_ALLOCATE: 'true'
-        ISTIO_META_DNS_CAPTURE: 'true'
-        WASM_INSECURE_REGISTRIES: '*'
-      tracing:
-        sampling: 100
-    enableTracing: true
-    extensionProviders:
-      - name: otel
-        opentelemetry:
-          port: 4317
-          service: >-
-            insight-agent-opentelemetry-collector.insight-system.svc.cluster.local
   namespace: istio-system
   profile: default
-  tag: 1.21.1
+  tag: 1.23.4
   values:
-    gateways:
-      istio-ingressgateway:
-        autoscaleEnabled: true
-        autoscaleMin: 1
-      securityContext:
-        sysctls: []
     global:
       istioNamespace: istio-system
-      meshID: mspider-dedicated
-      multiCluster:
-        clusterName: mspider-dedicated
-      network: internal-net
-      proxy:
-        logLevel: warning
-        resources:
-          limits:
-            cpu: 600m
-            memory: 200Mi
-          requests:
-            cpu: 100m
-            memory: 20Mi
-    meshConfig:
-      enableTracing: true
-      outboundTrafficPolicy:
-        mode: ALLOW_ANY
-    pilot:
-      autoscaleEnabled: true
-      autoscaleMin: 1
-      replicaCount: 1
-    sidecarInjectorWebhook:
-      enableNamespacesByDefault: false
-
+      meshID: demo-mesh
 ```
 
 #### Istio Gateway Demo
@@ -148,19 +96,16 @@ spec:
                 targetPort: 8080
             type: NodePort
         label:
-          mspider.io/mesh-gateway-name: test-gw
           test-gw: test-gw
         name: test-gw
         namespace: default
   profile: empty
-  tag: 1.21.1
+  tag: 1.23.4
   values:
     gateways:
       istio-ingressgateway:
         autoscaleEnabled: false
         injectionTemplate: gateway
-    global:
-      hub: release-ci.daocloud.io/mspider
 ```
 
 ## Common helm application
@@ -183,13 +128,13 @@ spec:
             cpu: 200m
             memory: 200Mi
       name: demo
-      version: 1.21.1
+      version: 1.23.4
   globalValues:
-    hub: release-ci.daocloud.io/mspider
+    global:
+      meshID: demo-mesh
   repo:
     name: istio
     url: https://istio-release.storage.googleapis.com/charts    
-
 ```
 
 ## HelmApp CRD
