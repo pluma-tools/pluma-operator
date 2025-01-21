@@ -1,16 +1,21 @@
 # Pluma Operator
 [![LICENSE](https://img.shields.io/github/license/pluma-tools/pluma-operator.svg?style=flat-square)](/LICENSE)
 
-A Comprehensive Helm and Istio Operator
+A Comprehensive Helm and Istio lightweight Operator
 
-The Pluma Operator is a sophisticated Kubernetes operator designed to enhance component management through the use of Helm charts. It ensures continuous lifecycle management for components and facilitates the transformation of Istio Custom Resource Definitions (CRDs) into HelmApp resources, simplifying Istio installations.
+:rocket: We Welcome Your Feedback! :heart:
+
+## Background
+
+With the [official deprecation of the Istio In-Cluster Operator](https://istio.io/latest/blog/2024/in-cluster-operator-deprecation-announcement/), the need for a more lightweight and maintainable installation solution has become increasingly important. Inspired by the [sail-operator](https://github.com/istio-ecosystem/sail-operator), **Pluma Operator** focuses on leveraging standard Helm to simplify and streamline Istio installation and management, offering users a more efficient and straightforward experience.
 
 ## Key Features
 
 1. **Helm Integration**: Leverages Helm charts for consistent and efficient component deployment.
 2. **Lifecycle Management**: Ensures regular maintenance and updates for deployed components.
-3. **Istio Support**: Transforms Istio CRDs into HelmApp resources, supporting suite-based Istio installations.
+3. **Istio Support**: Fully compatible with **IstioOperator CRD**, ensuring alignment with community standards
 4. **Kubernetes Native**: Fully integrates with Kubernetes environments for seamless operations.
+5. **Lightweight Design**: Utilizes Helm internally to enable automated installation and management, reducing complexity and maintenance overhead
 
 ## Installation
 
