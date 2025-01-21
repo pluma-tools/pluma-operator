@@ -1,4 +1,5 @@
 # Pluma Operator
+[![LICENSE](https://img.shields.io/github/license/pluma-tools/pluma-operator.svg?style=flat-square)](/LICENSE)
 
 A Comprehensive Helm and Istio Operator
 
