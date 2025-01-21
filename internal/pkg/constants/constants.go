@@ -10,4 +10,5 @@ const (
 	ManagedLabelValue      = "pluma-operator"
 	AllowForceUpgradeLabel = "action.pluma.io/allow-froce-upgrade"
 	SourceFromIOP          = "pluma.io/source-from-iop"
+	IOPSourceRepoLabel     = "pluma.io/source-repo"
 )

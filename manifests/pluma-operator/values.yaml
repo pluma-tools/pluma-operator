@@ -12,9 +12,8 @@ replicaCount: 1
 image:
   registry: ''
   repository: pluma-operator
-  # Overrides the image tag whose default is the chart appVersion.
-  # tag: "v0.0-dev-24e914ef"
-  tag: "v0.0-dev-8b02363a"
+   # Overrides the image tag whose default is the chart appVersion.
+  tag: "latest"
 
 imagePullPolicy: IfNotPresent
 imagePullSecrets: []

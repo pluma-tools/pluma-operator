@@ -351,6 +351,9 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(ctx context.Context, in *i
 	}
 
 	repo := "https://istio-release.storage.googleapis.com/charts"
+	if v := in.GetAnnotations()[constants.IOPSourceRepoLabel]; v != "" {
+		repo = v
+	}
 	happ := &operatorv1alpha1.HelmApp{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      in.GetName(),

@@ -10,7 +10,7 @@ on:
     types: [opened, synchronize, labeled]
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 # Limit workflow run or job concurrency,
@@ -22,14 +22,22 @@ concurrency:
 jobs:
   release:
     name: Release Latest Image
+    env:
+      HELM_CHARTS_DIR: manifests/pluma-operator
+      HELM_CHART_NAME: pluma-operator
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'deploy'))
     steps:
-      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
-      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.1
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          go-version: 1.23.x
+          go-version: '1.23'
           cache: true
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+
       - name: Get tag name
         id: get_tag
         run: |
@@ -40,6 +48,7 @@ jobs:
             echo "tag=0.0.0-dev-$(git rev-parse --short=8 HEAD)" >> $GITHUB_OUTPUT
             echo "Building development version"
           fi
+
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -57,3 +66,34 @@ jobs:
           VERSION: ${{ steps.get_tag.outputs.tag }}
           PLATFORMS: linux/amd64,linux/arm64
           PUSH_IMAGES: 1
+
+      - name: Tag helm chart image
+        run: |
+          image_tag=${{ steps.get_tag.outputs.tag }}
+          chart_version=${{ steps.get_tag.outputs.tag }}
+          sed -i "s/latest/${image_tag}/g" $HELM_CHARTS_DIR/values.yaml
+          chart_smever=${chart_version#"v"}
+          sed -i "s/0.1.0/${chart_smever}/g" $HELM_CHARTS_DIR/Chart.yaml
+      - name: Debug Secrets
+        run: |
+          echo "APP_ID is set: ${{ secrets.APP_ID != '' }}"
+          echo "APP_PRIVATE_KEY is set: ${{ secrets.APP_PRIVATE_KEY != '' }}"
+      - name: Get Github App Token
+        id: get-token
+        uses: wranders/ghapp-token-action@v1.0.2
+        with:
+          app_id: ${{ secrets.APP_ID }}
+          app_key_pem: ${{ secrets.APP_PRIVATE_KEY }}
+      - name: Sync Chart Repo
+        run: |
+          git config --global user.email "pluma[bot]@users.noreply.github.com"
+          git config --global user.name "pluma[bot]"
+          git clone https://x-access-token:${{ steps.get-token.outputs.token }}@github.com/pluma-tools/charts.git pluma-charts
+          helm package $HELM_CHARTS_DIR --destination ./pluma-charts/docs/
+          helm repo index --url https://pluma-tools.github.io/charts ./pluma-charts/docs/
+          cd pluma-charts/
+          git add docs/
+          chart_version=${{ steps.get_tag.outputs.tag }}
+          chart_smever=${chart_version#"v"}
+          git commit -m "update pluma-operator chart ${chart_smever}"
+          git push https://x-access-token:${{ steps.get-token.outputs.token }}@github.com/pluma-tools/charts.git
