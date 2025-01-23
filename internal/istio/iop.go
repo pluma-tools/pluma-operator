@@ -264,6 +264,9 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(ctx context.Context, in *i
 					for k, v := range k8sValuesMap {
 						componentValues[k] = v
 					}
+					if gws[0].Label != nil {
+						componentValues["labels"] = gws[0].Label
+					}
 				}
 			}
 
