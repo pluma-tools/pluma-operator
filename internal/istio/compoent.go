@@ -23,8 +23,16 @@ const (
 	ztunnelSpecName      = "ztunnel"
 )
 
+func isIngressGateway(c render.ComponentMigration) bool {
+	return c.Component.SpecName == ingressSpecName
+}
+
+func isEgressGateway(c render.ComponentMigration) bool {
+	return c.Component.SpecName == egressSpecName
+}
+
 func isGateway(c render.ComponentMigration) bool {
-	return c.Component.SpecName == egressSpecName || c.Component.SpecName == ingressSpecName
+	return isIngressGateway(c) || isEgressGateway(c)
 }
 
 // getComponent returns IOPComponent for the given specName
