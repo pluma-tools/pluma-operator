@@ -223,6 +223,7 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(ctx context.Context, in *i
 
 	components := make([]*operatorv1alpha1.HelmComponent, 0, len(mRes.Components))
 	var globalValues *structpb.Struct
+	gwIndex := 0
 	for _, cInfo := range mRes.Components {
 		if globalValues == nil {
 			vals, _ := cInfo.Values.GetPathMap("spec.values")
@@ -261,14 +262,28 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(ctx context.Context, in *i
 					continue
 				}
 
-				if len(gws) > 0 {
-					k8sValuesMap := structToMap(gws[0].Kubernetes)
+				if len(gws) > gwIndex {
+					k8sValuesMap := structToMap(gws[gwIndex].Kubernetes)
 					for k, v := range k8sValuesMap {
+						if k == "env" {
+							continue
+						}
 						componentValues[k] = v
 					}
-					if gws[0].Label != nil {
-						labels = gws[0].Label
+
+					// env processing
+					envValues := map[string]string{}
+					if gws[gwIndex].Kubernetes != nil {
+						for _, e := range gws[gwIndex].Kubernetes.Env {
+							envValues[e.Name] = e.Value
+						}
+						componentValues["env"] = structToMap(envValues)
 					}
+
+					if gws[gwIndex].Label != nil {
+						labels = gws[gwIndex].Label
+					}
+					gwIndex++
 				}
 			}
 
