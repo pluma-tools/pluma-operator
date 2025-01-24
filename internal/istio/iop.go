@@ -302,7 +302,7 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(ctx context.Context, in *i
 			if _, ok := labels["istio"]; !ok {
 				labels["istio"] = istioValue
 			}
-			componentValues["labels"] = labels
+			componentValues["labels"] = structToMap(labels)
 
 			// Convert values to struct
 			if componentValuesStruct, err := structpb2.NewStruct(componentValues); err != nil {
