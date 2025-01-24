@@ -27,7 +27,7 @@ jobs:
       HELM_CHART_NAME: pluma-operator
     runs-on: ubuntu-latest
     if: (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'deploy'))
-    # if: github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'deploy'))
+#    if: github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'deploy'))
     steps:
       - name: Checkout
         uses: actions/checkout@v4

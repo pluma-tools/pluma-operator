@@ -334,6 +334,7 @@ func (r *HelmAppReconciler) reconcileComponent(ctx context.Context, helmApp *ope
 		if _, ok := helmApp.Labels[constants.AllowForceUpgradeLabel]; ok {
 			install.DryRun = true
 			install.IsUpgrade = true
+			install.Force = true
 
 			// Release doesn't exist, install it
 			release, err = install.Run(chart, values)

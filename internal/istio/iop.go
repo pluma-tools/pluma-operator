@@ -243,6 +243,8 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(ctx context.Context, in *i
 				Version: version,
 			}
 
+			labels := map[string]string{}
+
 			// Extract gateway configuration
 			componentsKey := fmt.Sprintf("spec.components.%s", cInfo.Component.SpecName)
 			if componentsGateway, ok := cInfo.Values.GetPath(componentsKey); ok {
@@ -264,6 +266,9 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(ctx context.Context, in *i
 					for k, v := range k8sValuesMap {
 						componentValues[k] = v
 					}
+					if gws[0].Label != nil {
+						labels = gws[0].Label
+					}
 				}
 			}
 
@@ -283,6 +288,21 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(ctx context.Context, in *i
 
 				componentValues["autoscaling"] = autoscaling
 			}
+
+			// compatible iop  gateway template
+			appValue := "istio-ingressgateway"
+			istioValue := "ingressgateway"
+			if isEgressGateway(cInfo) {
+				appValue = "istio-egressgateway"
+				istioValue = "egressgateway"
+			}
+			if _, ok := labels["app"]; !ok {
+				labels["app"] = appValue
+			}
+			if _, ok := labels["istio"]; !ok {
+				labels["istio"] = istioValue
+			}
+			componentValues["labels"] = structToMap(labels)
 
 			// Convert values to struct
 			if componentValuesStruct, err := structpb2.NewStruct(componentValues); err != nil {
