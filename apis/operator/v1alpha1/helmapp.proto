@@ -22,6 +22,8 @@ message HelmComponent {
   google.protobuf.Struct componentValues = 4;
   HelmRepo repo = 5;
   bool ignoreGlobalValues = 6;
+  // Enable schema validation for this component
+  bool enableSchemaValidation = 7;
 }
 
 message HelmRepo {

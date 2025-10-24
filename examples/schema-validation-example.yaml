@@ -1,0 +1,95 @@
+apiVersion: operator.pluma.io/v1alpha1
+kind: HelmApp
+metadata:
+  name: istio-with-schema-validation
+  namespace: istio-system
+spec:
+  components:
+  - name: istio-base
+    chart: base
+    version: 1.25.5
+    componentValues:
+      # These values will be filtered based on the base chart's schema
+      defaultRevision: ""
+  - name: istio-istiod
+    chart: istiod
+    version: 1.25.5
+    componentValues:
+      pilot:
+        resources:
+          limits:
+            cpu: 1500m
+            memory: 1500Mi
+          requests:
+            cpu: 200m
+            memory: 200Mi
+  - name: istio-gateway
+    chart: gateway
+    version: 1.25.5
+    # Enable schema validation for this component
+    enableSchemaValidation: true
+    componentValues:
+      # Only values defined in gateway chart's schema will be passed
+      autoscaling:
+        enabled: true
+        minReplicas: 1
+      resources:
+        limits:
+          cpu: "1"
+          memory: 900Mi
+        requests:
+          cpu: 50m
+          memory: 50Mi
+  globalValues:
+    # Global values that will be filtered for each component based on their schemas
+    global:
+      hub: release-ci.daocloud.io/mspider
+      istioNamespace: istio-system
+      meshID: jxj31-mspider-tg
+      multiCluster:
+        clusterName: jxj31-mspider
+      proxy:
+        logLevel: warning
+        resources:
+          limits:
+            cpu: 600m
+            memory: 200Mi
+          requests:
+            cpu: 100m
+            memory: 20Mi
+      remotePilotAddress: 10.64.24.220
+      tag: 1.25.5-mspider
+    # These values will be filtered out for gateway component if not in its schema
+    meshConfig:
+      defaultConfig:
+        extraStatTags:
+        - destination_mesh_id
+        - source_mesh_id
+        proxyMetadata:
+          ISTIO_META_DNS_AUTO_ALLOCATE: "true"
+          ISTIO_META_DNS_CAPTURE: "true"
+          WASM_INSECURE_REGISTRIES: '*'
+        tracing:
+          sampling: 100
+      enableTracing: true
+      extensionProviders:
+      - name: otel
+        opentelemetry:
+          port: 4317
+          service: insight-agent-opentelemetry-collector.insight-system.svc.cluster.local
+      outboundTrafficPolicy:
+        mode: ALLOW_ANY
+    pilot:
+      autoscaleEnabled: true
+      autoscaleMin: 1
+      cni:
+        enabled: false
+      enabled: true
+      replicaCount: 1
+    sidecarInjectorWebhook:
+      enableNamespacesByDefault: false
+    ztunnel:
+      resourceName: ztunnel
+  repo:
+    name: istio
+    url: https://release.daocloud.io/chartrepo/addon

@@ -13,6 +13,7 @@ import (
 
 	errors2 "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"pluma.io/pluma-operator/internal/pkg/schema"
 	"pluma.io/pluma-operator/internal/pkg/tools"
 
 	"github.com/hashicorp/go-multierror"
@@ -286,9 +287,19 @@ func (r *HelmAppReconciler) reconcileComponent(ctx context.Context, helmApp *ope
 	helmCfg *helmaction.Configuration) (componentStatus *operatorv1alpha1.HelmComponentStatus, err error) {
 	cLog := ctllog.FromContext(ctx)
 
+	// Merge global and component values
 	values := tools.MergeMaps(helmApp.Spec.GlobalValues.AsMap(), component.ComponentValues.AsMap())
 	if component.IgnoreGlobalValues {
 		values = component.ComponentValues.AsMap()
+	}
+
+	// Apply schema-based filtering if enabled for this component
+	if component.EnableSchemaValidation {
+		values, err = r.filterValuesBySchema(ctx, component, values, helmCfg)
+		if err != nil {
+			cLog.Error(err, "Failed to filter values by schema", "component", component.Name)
+			// Continue with original values if schema filtering fails
+		}
 	}
 	// Create component status
 	componentStatus = &operatorv1alpha1.HelmComponentStatus{
@@ -508,4 +519,36 @@ func hasConfigChanged(release *helmrelease.Release, newValues map[string]any, ne
 		return true
 	}
 	return !reflect.DeepEqual(release.Config, newValues)
+}
+
+// filterValuesBySchema filters values based on the chart's values.schema.json
+func (r *HelmAppReconciler) filterValuesBySchema(ctx context.Context, component *operatorv1alpha1.HelmComponent, values map[string]interface{}, helmCfg *helmaction.Configuration) (map[string]interface{}, error) {
+	cLog := ctllog.FromContext(ctx)
+
+	// Create a temporary install action to locate the chart
+	install := helmaction.NewInstall(helmCfg)
+	install.RepoURL = component.Repo.Url
+	install.Version = component.Version
+	install.ChartPathOptions.RepoURL = component.Repo.Url
+
+	// Locate the chart
+	cp, err := install.ChartPathOptions.LocateChart(component.Chart, settings)
+	if err != nil {
+		return values, fmt.Errorf("failed to locate chart: %w", err)
+	}
+
+	// Load schema from chart
+	chartSchema, err := schema.LoadSchemaFromChart(cp)
+	if err != nil {
+		cLog.Info("No schema found in chart, skipping filtering", "component", component.Name, "error", err)
+		return values, nil // Return original values if no schema
+	}
+
+	// Create filter and filter values
+	filter := schema.NewFilter(chartSchema)
+	filteredValues := filter.FilterValues(values)
+
+	cLog.Info("Applied schema filtering", "component", component.Name, "originalKeys", len(values), "filteredKeys", len(filteredValues))
+
+	return filteredValues, nil
 }
