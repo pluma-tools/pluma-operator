@@ -1,7 +1,12 @@
 package schema
 
 import (
+	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
+
+	"helm.sh/helm/v3/pkg/chart"
 )
 
 func TestFilter_FilterValues(t *testing.T) {
@@ -344,28 +349,342 @@ func TestFilter_filterArray(t *testing.T) {
 func TestLoadSchemaFromChart(t *testing.T) {
 	tests := []struct {
 		name        string
-		chartPath   string
+		chart       *chart.Chart
 		expectError bool
 	}{
 		{
-			name:        "non-existent chart path",
-			chartPath:   "/non/existent/path",
+			name:        "chart without schema",
+			chart:       &chart.Chart{Raw: []*chart.File{}},
 			expectError: true,
 		},
 		{
-			name:        "empty chart path",
-			chartPath:   "",
-			expectError: true,
+			name: "chart with schema",
+			chart: &chart.Chart{
+				Raw: []*chart.File{
+					{
+						Name: "values.schema.json",
+						Data: []byte(`{"type": "object", "properties": {"test": {"type": "string"}}}`),
+					},
+				},
+			},
+			expectError: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := LoadSchemaFromChart(tt.chartPath)
+			_, err := LoadSchemaFromChart(tt.chart)
 			if (err != nil) != tt.expectError {
 				t.Errorf("LoadSchemaFromChart() error = %v, expectError %v", err, tt.expectError)
 			}
 		})
+	}
+}
+
+func TestResolveSchemaReferences(t *testing.T) {
+	tests := []struct {
+		name     string
+		schema   *JSONSchema
+		expected *JSONSchema
+	}{
+		{
+			name: "resolve $ref to $defs/values",
+			schema: &JSONSchema{
+				Ref: "#/$defs/values",
+				Defs: map[string]*JSONSchema{
+					"values": {
+						Type: "object",
+						Properties: map[string]*JSONSchema{
+							"autoscaling": {
+								Type: "object",
+								Properties: map[string]*JSONSchema{
+									"enabled": {Type: "boolean"},
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: &JSONSchema{
+				Type: "object",
+				Properties: map[string]*JSONSchema{
+					"autoscaling": {
+						Type: "object",
+						Properties: map[string]*JSONSchema{
+							"enabled": {Type: "boolean"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "schema without $ref",
+			schema: &JSONSchema{
+				Type: "object",
+				Properties: map[string]*JSONSchema{
+					"test": {Type: "string"},
+				},
+			},
+			expected: &JSONSchema{
+				Type: "object",
+				Properties: map[string]*JSONSchema{
+					"test": {Type: "string"},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := ResolveSchemaReferences(tt.schema)
+			if err != nil {
+				t.Errorf("ResolveSchemaReferences() error = %v", err)
+				return
+			}
+
+			if !schemasEqual(result, tt.expected) {
+				t.Errorf("resolveSchemaReferences() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestFilterWithResolvedSchema(t *testing.T) {
+	// Test with a schema that has $ref like the real Istio schema
+	schema := &JSONSchema{
+		Ref: "#/$defs/values",
+		Defs: map[string]*JSONSchema{
+			"values": {
+				Type: "object",
+				Properties: map[string]*JSONSchema{
+					"autoscaling": {
+						Type: "object",
+						Properties: map[string]*JSONSchema{
+							"enabled":     {Type: "boolean"},
+							"minReplicas": {Type: "integer"},
+						},
+					},
+					"global": {
+						Type: "object",
+						Properties: map[string]*JSONSchema{
+							"hub": {Type: "string"},
+						},
+					},
+				},
+				AdditionalProperties: false,
+			},
+		},
+	}
+
+	// Resolve the schema
+	resolvedSchema, err := ResolveSchemaReferences(schema)
+	if err != nil {
+		t.Fatalf("Failed to resolve schema: %v", err)
+	}
+
+	// Test filtering
+	filter := NewFilter(resolvedSchema)
+	input := map[string]interface{}{
+		"autoscaling": map[string]interface{}{
+			"enabled":     true,
+			"minReplicas": 1,
+		},
+		"global": map[string]interface{}{
+			"hub": "test-hub",
+		},
+		"meshConfig": map[string]interface{}{
+			"defaultConfig": map[string]interface{}{
+				"extraStatTags": []string{"destination_mesh_id"},
+			},
+		},
+	}
+
+	expected := map[string]interface{}{
+		"autoscaling": map[string]interface{}{
+			"enabled":     true,
+			"minReplicas": 1,
+		},
+		"global": map[string]interface{}{
+			"hub": "test-hub",
+		},
+	}
+
+	result := filter.FilterValues(input)
+	if !mapsEqual(result, expected) {
+		t.Errorf("FilterValues() with resolved schema = %v, want %v", result, expected)
+	}
+}
+
+func TestFilterWithTypeArray(t *testing.T) {
+	// Test with a schema that has type arrays like ["object", "null"]
+	schema := &JSONSchema{
+		Type: "object",
+		Properties: map[string]*JSONSchema{
+			"securityContext": {
+				Type: []interface{}{"object", "null"},
+				Properties: map[string]*JSONSchema{
+					"runAsUser": {Type: "integer"},
+				},
+			},
+			"containerSecurityContext": {
+				Type: []interface{}{"object", "null"},
+				Properties: map[string]*JSONSchema{
+					"runAsNonRoot": {Type: "boolean"},
+				},
+			},
+			"minReadySeconds": {
+				Type: []interface{}{"null", "integer"},
+			},
+		},
+		AdditionalProperties: false,
+	}
+
+	filter := NewFilter(schema)
+	input := map[string]interface{}{
+		"securityContext": map[string]interface{}{
+			"runAsUser": 1000,
+		},
+		"containerSecurityContext": map[string]interface{}{
+			"runAsNonRoot": true,
+		},
+		"minReadySeconds": 30,
+		"unknownField":    "should be filtered out",
+	}
+
+	expected := map[string]interface{}{
+		"securityContext": map[string]interface{}{
+			"runAsUser": 1000,
+		},
+		"containerSecurityContext": map[string]interface{}{
+			"runAsNonRoot": true,
+		},
+		"minReadySeconds": 30,
+	}
+
+	result := filter.FilterValues(input)
+	if !mapsEqual(result, expected) {
+		t.Errorf("FilterValues() with type arrays = %v, want %v", result, expected)
+	}
+}
+
+func TestFilterWithRealIstioSchema(t *testing.T) {
+	// Test with a schema structure similar to the real Istio schema you provided
+	istioSchemaJSON := `{
+		"$schema": "http://json-schema.org/schema#",
+		"$defs": {
+			"values": {
+				"type": "object",
+				"additionalProperties": false,
+				"properties": {
+					"autoscaling": {
+						"type": "object",
+						"properties": {
+							"enabled": {
+								"type": "boolean"
+							},
+							"maxReplicas": {
+								"type": "integer"
+							},
+							"minReplicas": {
+								"type": "integer"
+							}
+						}
+					},
+					"global": {
+						"type": "object",
+						"properties": {
+							"hub": {
+								"type": "string"
+							},
+							"istioNamespace": {
+								"type": "string"
+							}
+						}
+					},
+					"pilot": {
+						"type": "object"
+					}
+				}
+			}
+		},
+		"$ref": "#/$defs/values"
+	}`
+
+	var schema JSONSchema
+	if err := json.Unmarshal([]byte(istioSchemaJSON), &schema); err != nil {
+		t.Fatalf("Failed to unmarshal schema: %v", err)
+	}
+
+	// Resolve the schema
+	resolvedSchema, err := ResolveSchemaReferences(&schema)
+	if err != nil {
+		t.Fatalf("Failed to resolve schema: %v", err)
+	}
+
+	// Verify that the schema was resolved correctly
+	if resolvedSchema.Type != "object" {
+		t.Errorf("Expected resolved schema type to be 'object', got '%s'", resolvedSchema.Type)
+	}
+
+	if resolvedSchema.Properties == nil {
+		t.Error("Expected resolved schema to have properties")
+	}
+
+	// Check that specific properties exist
+	if _, exists := resolvedSchema.Properties["autoscaling"]; !exists {
+		t.Error("Expected 'autoscaling' property in resolved schema")
+	}
+
+	if _, exists := resolvedSchema.Properties["global"]; !exists {
+		t.Error("Expected 'global' property in resolved schema")
+	}
+
+	// Test filtering with the resolved schema
+	filter := NewFilter(resolvedSchema)
+	input := map[string]interface{}{
+		"autoscaling": map[string]interface{}{
+			"enabled":     true,
+			"minReplicas": 1,
+			"maxReplicas": 10,
+		},
+		"global": map[string]interface{}{
+			"hub":            "test-hub",
+			"istioNamespace": "istio-system",
+		},
+		"pilot": map[string]interface{}{
+			"autoscaleEnabled": true,
+		},
+		// This should be filtered out
+		"meshConfig": map[string]interface{}{
+			"defaultConfig": map[string]interface{}{
+				"extraStatTags": []string{"destination_mesh_id"},
+			},
+		},
+	}
+
+	result := filter.FilterValues(input)
+
+	// Verify that only schema-defined properties are kept
+	if len(result) != 3 {
+		t.Errorf("Expected 3 properties in result, got %d: %v", len(result), result)
+	}
+
+	// Verify specific properties
+	if _, exists := result["autoscaling"]; !exists {
+		t.Error("Expected 'autoscaling' in result")
+	}
+
+	if _, exists := result["global"]; !exists {
+		t.Error("Expected 'global' in result")
+	}
+
+	if _, exists := result["pilot"]; !exists {
+		t.Error("Expected 'pilot' in result")
+	}
+
+	// Verify that meshConfig was filtered out
+	if _, exists := result["meshConfig"]; exists {
+		t.Error("Expected 'meshConfig' to be filtered out")
 	}
 }
 
@@ -410,4 +729,71 @@ func slicesEqual(a, b []interface{}) bool {
 		}
 	}
 	return true
+}
+
+func schemasEqual(a, b *JSONSchema) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+
+	if !typesEqual(a.Type, b.Type) || a.Ref != b.Ref {
+		return false
+	}
+
+	// Compare properties
+	if len(a.Properties) != len(b.Properties) {
+		return false
+	}
+	for k, v := range a.Properties {
+		if !schemasEqual(v, b.Properties[k]) {
+			return false
+		}
+	}
+
+	// Compare items
+	if !schemasEqual(a.Items, b.Items) {
+		return false
+	}
+
+	// Compare additionalProperties (simplified comparison)
+	if a.AdditionalProperties != b.AdditionalProperties {
+		return false
+	}
+
+	return true
+}
+
+func typesEqual(a, b interface{}) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+
+	// Convert both to strings for comparison
+	aStr := typeToString(a)
+	bStr := typeToString(b)
+	return aStr == bStr
+}
+
+func typeToString(t interface{}) string {
+	switch v := t.(type) {
+	case string:
+		return v
+	case []interface{}:
+		// Convert array to string representation
+		var strs []string
+		for _, item := range v {
+			if str, ok := item.(string); ok {
+				strs = append(strs, str)
+			}
+		}
+		return fmt.Sprintf("[%s]", strings.Join(strs, ","))
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }

@@ -216,7 +216,7 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(ctx context.Context, in *i
 		return fmt.Sprintf("iop-%s-%s", in.GetName(), p)
 	}
 
-	version := "1.21.1"
+	version := "1.22.8"
 	if tag := in.Spec.GetTag().GetStringValue(); tag != "" {
 		version = tag
 	}

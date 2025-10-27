@@ -76,6 +76,9 @@ spec:
                             type: object
                         type: object
                         x-kubernetes-preserve-unknown-fields: true
+                      enableSchemaValidation:
+                        description: Enable schema validation for this component
+                        type: boolean
                       ignoreGlobalValues:
                         type: boolean
                       name:
