@@ -167,12 +167,12 @@ func structToMap(in any) map[string]interface{} {
 	var res map[string]interface{}
 	inStr, err := json.Marshal(in)
 	if err != nil {
-		fmt.Errorf("failed to marshal input to JSON: %w", err)
+		_ = fmt.Errorf("failed to marshal input to JSON: %w", err)
 		return nil
 	}
 
 	if err := json.Unmarshal(inStr, &res); err != nil {
-		fmt.Errorf("failed to unmarshal JSON to map: %w", err)
+		_ = fmt.Errorf("failed to unmarshal JSON to map: %w", err)
 		return nil
 	}
 	return res
@@ -216,7 +216,7 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(ctx context.Context, in *i
 		return fmt.Sprintf("iop-%s-%s", in.GetName(), p)
 	}
 
-	version := "1.21.1"
+	version := "1.22.8"
 	if tag := in.Spec.GetTag().GetStringValue(); tag != "" {
 		version = tag
 	}
@@ -239,9 +239,10 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(ctx context.Context, in *i
 		componentValues := make(map[string]interface{})
 		if isGateway(cInfo) {
 			gwComp := &operatorv1alpha1.HelmComponent{
-				Name:    cInfo.ComponentSpec.Name,
-				Chart:   "gateway",
-				Version: version,
+				Name:                   cInfo.ComponentSpec.Name,
+				Chart:                  "gateway",
+				Version:                version,
+				EnableSchemaValidation: true, // Enable schema validation for gateway components
 			}
 
 			labels := map[string]string{}

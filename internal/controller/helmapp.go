@@ -11,8 +11,11 @@ import (
 	"strconv"
 	"time"
 
+	"helm.sh/helm/v3/pkg/chart"
+
 	errors2 "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"pluma.io/pluma-operator/internal/pkg/schema"
 	"pluma.io/pluma-operator/internal/pkg/tools"
 
 	"github.com/hashicorp/go-multierror"
@@ -286,10 +289,12 @@ func (r *HelmAppReconciler) reconcileComponent(ctx context.Context, helmApp *ope
 	helmCfg *helmaction.Configuration) (componentStatus *operatorv1alpha1.HelmComponentStatus, err error) {
 	cLog := ctllog.FromContext(ctx)
 
+	// Merge global and component values
 	values := tools.MergeMaps(helmApp.Spec.GlobalValues.AsMap(), component.ComponentValues.AsMap())
 	if component.IgnoreGlobalValues {
 		values = component.ComponentValues.AsMap()
 	}
+
 	// Create component status
 	componentStatus = &operatorv1alpha1.HelmComponentStatus{
 		Name:    component.GetName(),
@@ -314,11 +319,22 @@ func (r *HelmAppReconciler) reconcileComponent(ctx context.Context, helmApp *ope
 	}
 
 	// Load Chart
-	chart, err := loader.Load(cp)
+	lChart, err := loader.Load(cp)
 	if err != nil {
 		err = fmt.Errorf("failed to load chart: %w", err)
 		componentStatus.Message = err.Error()
 		return
+	}
+
+	// Apply schema-based filtering if enabled for this component
+	if component.EnableSchemaValidation {
+		cLog.Info("enable to filter values by schema", "component", component.Name)
+		filterValues, err := r.filterValuesBySchema(ctx, lChart, component, values)
+		if err != nil {
+			cLog.Error(err, "Failed to filter values by schema", "component", component.Name)
+		} else {
+			values = filterValues
+		}
 	}
 
 	// Install or upgrade the release
@@ -337,7 +353,7 @@ func (r *HelmAppReconciler) reconcileComponent(ctx context.Context, helmApp *ope
 			install.Force = true
 
 			// Release doesn't exist, install it
-			release, err = install.Run(chart, values)
+			release, err = install.Run(lChart, values)
 			if err != nil {
 				cLog.Error(err, "failed to install release")
 				multierror.Append(mErrs, fmt.Errorf("failed to install release: %v", err))
@@ -410,7 +426,7 @@ func (r *HelmAppReconciler) reconcileComponent(ctx context.Context, helmApp *ope
 		}
 
 		// Release doesn't exist, install it
-		release, err = install.Run(chart, values)
+		release, err = install.Run(lChart, values)
 		if err != nil {
 			cLog.Error(err, "failed to install release")
 			multierror.Append(mErrs, fmt.Errorf("failed to install release: %v", err))
@@ -427,7 +443,7 @@ func (r *HelmAppReconciler) reconcileComponent(ctx context.Context, helmApp *ope
 			upgrade.Namespace = helmApp.Namespace
 			upgrade.RepoURL = helmApp.Spec.Repo.Url
 			upgrade.Version = component.Version
-			release, err = upgrade.Run(component.Name, chart, values)
+			release, err = upgrade.Run(component.Name, lChart, values)
 			if err != nil {
 				cLog.Error(err, "failed to upgrade release")
 				multierror.Append(mErrs, fmt.Errorf("failed to upgrade release: %v", err))
@@ -508,4 +524,24 @@ func hasConfigChanged(release *helmrelease.Release, newValues map[string]any, ne
 		return true
 	}
 	return !reflect.DeepEqual(release.Config, newValues)
+}
+
+// filterValuesBySchema filters values based on the chart's values.schema.json
+func (r *HelmAppReconciler) filterValuesBySchema(ctx context.Context, cp *chart.Chart, component *operatorv1alpha1.HelmComponent, values map[string]interface{}) (map[string]interface{}, error) {
+	cLog := ctllog.FromContext(ctx)
+
+	// Load schema from chart
+	chartSchema, err := schema.LoadSchemaFromChart(cp)
+	if err != nil {
+		cLog.Info("No schema found in chart, skipping filtering", "component", component.Name, "error", err)
+		return values, nil // Return original values if no schema
+	}
+
+	// Create filter and filter values
+	filter := schema.NewFilter(chartSchema)
+	filteredValues := filter.FilterValues(values)
+
+	cLog.Info("Applied schema filtering", "component", component.Name, "originalKeys", len(values), "filteredKeys", len(filteredValues))
+
+	return filteredValues, nil
 }
