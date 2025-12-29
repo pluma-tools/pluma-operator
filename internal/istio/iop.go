@@ -290,20 +290,22 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(ctx context.Context, in *i
 
 			// spec.values.gateways.istio-ingressgateway.autoscaleEnabled
 			// spec.values.gateways.istio-egressgateway.autoscaleEnabled
+			// Default autoscaling is disabled to ensure it can be explicitly disabled
+			autoscaling := map[string]interface{}{
+				"enabled": false,
+			}
 			autoscaleEnabledKey := fmt.Sprintf("spec.values.%s.autoscaleEnabled", cInfo.Component.ToHelmValuesTreeRoot)
 			minReplicasKey := fmt.Sprintf("spec.values.%s.autoscaleMin", cInfo.Component.ToHelmValuesTreeRoot)
 			// Configure autoscaling settings
 			if enabled := cInfo.Values.GetPathBool(autoscaleEnabledKey); enabled {
-				autoscaling := map[string]interface{}{
-					"enabled": enabled,
-				}
+				autoscaling["enabled"] = true
 
 				if minReplicas := cInfo.Values.GetPathString(minReplicasKey); minReplicas != "" {
 					autoscaling["minReplicas"] = minReplicas
 				}
-
-				componentValues["autoscaling"] = autoscaling
 			}
+			// If autoscaleEnabled is explicitly set to false or not set, autoscaling remains disabled (default)
+			componentValues["autoscaling"] = autoscaling
 
 			// compatible iop  gateway template
 			appValue := "istio-ingressgateway"
