@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/json"
+	kubeversion "k8s.io/apimachinery/pkg/util/version"
 	"pluma.io/pluma-operator/config"
 	"pluma.io/pluma-operator/internal/pkg/constants"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -207,18 +208,41 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(ctx context.Context, in *i
 		return nil, fmt.Errorf("failed to write to temp file: %w", err)
 	}
 
-	mRes, err := render.Migrate([]string{tempFile.Name()}, nil, nil)
+	var flags []string
+	if in.Spec.GetHub() == "" && in.Spec.GetInstallPackagePath() == "" {
+		// Keep the previous built-in profile's image registry across Istio SDK upgrades.
+		flags = append(flags, "hub=gcr.io/istio-testing")
+	}
+	mRes, err := render.Migrate([]string{tempFile.Name()}, flags, nil)
+	if err != nil && in.Spec.GetInstallPackagePath() != "" {
+		dir, stageErr := stageLegacyGatewayPackage(in.Spec.GetInstallPackagePath())
+		if stageErr != nil {
+			return nil, fmt.Errorf("prepare install package for gateway compatibility: %w", stageErr)
+		}
+		if dir != "" {
+			defer os.RemoveAll(dir)
+			mRes, err = render.Migrate([]string{tempFile.Name()}, append(flags, "installPackagePath="+dir), nil)
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to migrate IstioOperator: %w", err)
-	}
-
-	buildName := func(p string) string {
-		return fmt.Sprintf("iop-%s-%s", in.GetName(), p)
 	}
 
 	version := "1.22.8"
 	if tag := in.Spec.GetTag().GetStringValue(); tag != "" {
 		version = tag
+	}
+	if in.Spec.GetInstallPackagePath() != "" {
+		if v, parseErr := kubeversion.ParseSemantic(version); parseErr == nil && v.Major() == 1 && v.Minor() < 24 {
+			mRes.Components, err = migrateIstiodRemote(tempFile.Name(), flags, mRes.Components)
+			if err != nil {
+				return nil, fmt.Errorf("failed to migrate IstioOperator: %w", err)
+			}
+		}
+	}
+
+	buildName := func(p string) string {
+		return fmt.Sprintf("iop-%s-%s", in.GetName(), p)
 	}
 
 	components := make([]*operatorv1alpha1.HelmComponent, 0, len(mRes.Components))

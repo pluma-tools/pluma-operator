@@ -7,6 +7,32 @@ import (
 	"helm.sh/helm/v3/pkg/chart"
 )
 
+// FixLegacyGatewaySchema restores validation of gateway charts whose closed
+// root rejects defaults declared alongside the referenced values definition.
+func FixLegacyGatewaySchema(cp *chart.Chart) (bool, error) {
+	if cp.Metadata.Name != "gateway" {
+		return false, nil
+	}
+	_, legacyDefaults := cp.Values["defaults"]
+	_, hiddenDefaults := cp.Values["_internal_defaults_do_not_set"]
+	if !legacyDefaults && !hiddenDefaults {
+		return false, nil
+	}
+	var root map[string]json.RawMessage
+	if json.Unmarshal(cp.Schema, &root) != nil ||
+		string(root["$ref"]) != `"#/$defs/values"` ||
+		string(root["additionalProperties"]) != "false" || root["properties"] != nil {
+		return false, nil
+	}
+	delete(root, "additionalProperties")
+	data, err := json.Marshal(root)
+	if err != nil {
+		return false, fmt.Errorf("fix legacy gateway schema: %w", err)
+	}
+	cp.Schema = data
+	return true, nil
+}
+
 // JSONSchema represents a simplified JSON Schema structure for field filtering
 type JSONSchema struct {
 	Type                 interface{}            `json:"type,omitempty"` // Can be string or []string

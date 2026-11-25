@@ -2,6 +2,9 @@ package istio
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"google.golang.org/protobuf/types/known/structpb"
@@ -11,6 +14,162 @@ import (
 	istiov1alpha1 "pluma.io/api/istio/v1alpha1"
 	operatorv1alpha1 "pluma.io/api/operator/v1alpha1"
 )
+
+func TestConvertIOPRendersLegacyGatewayFromInstallPackage(t *testing.T) {
+	dir := t.TempDir()
+	chartDir := "charts/gateways/istio-ingress"
+	const legacySchema = `{"$ref":"#/$defs/values","additionalProperties":false,"$defs":{"values":{"properties":{"replicaCount":{"type":"integer"}}}}}`
+	for name, content := range map[string]string{
+		"profiles/default.yaml": `spec:
+  components:
+    pilot: {enabled: false}
+    ingressGateways:
+    - {name: custom-gateway, enabled: true}
+`,
+		"charts/base/Chart.yaml":  "apiVersion: v2\nname: base\nversion: 1.23.4\n",
+		chartDir + "/Chart.yaml":  "apiVersion: v2\nname: gateway\nversion: 1.23.4\n",
+		chartDir + "/values.yaml": "defaults: {replicaCount: 1}\n",
+		chartDir + "/templates/gateway.yaml": `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway
+data:
+  replicas: {{ .Values.defaults.replicaCount | quote }}
+`,
+		"gateway.schema.json": legacySchema,
+	} {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	schemaPath := filepath.Join(dir, chartDir, "values.schema.json")
+	if err := os.Symlink(filepath.Join(dir, "gateway.schema.json"), schemaPath); err != nil {
+		t.Fatal(err)
+	}
+
+	iop := &istiov1alpha1.IstioOperator{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "install.istio.io/v1alpha1", Kind: "IstioOperator"},
+		ObjectMeta: metav1.ObjectMeta{Name: "mesh", Namespace: "istio-system"},
+		Spec:       &istiov1alpha1.IstioOperatorSpec{InstallPackagePath: dir, Tag: structpb.NewStringValue("1.23.4")},
+	}
+	r := &IstioOperatorReconciler{}
+	app, err := r.convertIopToHelmApp(context.Background(), iop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := app.Spec.Components; len(got) != 2 || got[0].Chart != "base" ||
+		got[1].Chart != "gateway" || got[1].Name != "custom-gateway" || got[1].Version != "1.23.4" {
+		t.Fatalf("rendered components = %v", got)
+	}
+	iop.Spec.Values = &structpb.Struct{Fields: map[string]*structpb.Value{
+		"replicaCount": structpb.NewStringValue("invalid"),
+	}}
+	if _, err := r.convertIopToHelmApp(context.Background(), iop); err == nil || !strings.Contains(err.Error(), "want integer") {
+		t.Fatalf("expected Helm to reject an invalid replicaCount, got %v", err)
+	}
+	info, err := os.Lstat(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 || string(data) != legacySchema {
+		t.Fatal("the original chart schema was modified")
+	}
+}
+
+func TestConvertIOPKeepsBuiltInImageDefaults(t *testing.T) {
+	for _, tc := range []struct {
+		hub, valuesHub, want string
+	}{
+		{want: "gcr.io/istio-testing"},
+		{hub: "images.example/istio", want: "images.example/istio"},
+		{valuesHub: "values.example/istio", want: "values.example/istio"},
+		{hub: "images.example/istio", valuesHub: "values.example/istio", want: "values.example/istio"},
+	} {
+		t.Run(tc.hub+"_"+tc.valuesHub, func(t *testing.T) {
+			iop := &istiov1alpha1.IstioOperator{
+				TypeMeta:   metav1.TypeMeta{APIVersion: "install.istio.io/v1alpha1", Kind: "IstioOperator"},
+				ObjectMeta: metav1.ObjectMeta{Name: "mesh", Namespace: "istio-system"},
+				Spec:       &istiov1alpha1.IstioOperatorSpec{Hub: tc.hub},
+			}
+			if tc.valuesHub != "" {
+				iop.Spec.Values = &structpb.Struct{Fields: map[string]*structpb.Value{
+					"global": structpb.NewStructValue(&structpb.Struct{Fields: map[string]*structpb.Value{
+						"hub": structpb.NewStringValue(tc.valuesHub),
+					}}),
+				}}
+			}
+			app, err := (&IstioOperatorReconciler{}).convertIopToHelmApp(context.Background(), iop)
+			if err != nil {
+				t.Fatal(err)
+			}
+			global := app.Spec.GlobalValues.GetFields()["global"].GetStructValue().GetFields()
+			if got := global["hub"].GetStringValue(); got != tc.want {
+				t.Errorf("image hub = %q, want %q", got, tc.want)
+			}
+			for _, component := range app.Spec.Components {
+				if component.Version != "1.22.8" {
+					t.Errorf("%s chart version = %q, want 1.22.8", component.Name, component.Version)
+				}
+			}
+		})
+	}
+}
+
+func TestConvertIOPKeepsLegacyRemoteFromInstallPackage(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range map[string]string{
+		"profiles/default.yaml": `spec:
+  hub: custom.example/istio
+  components:
+    base: {enabled: false}
+    pilot: {enabled: false}
+    ingressGateways: []
+    istiodRemote: {enabled: true}
+  values:
+    global:
+      remotePilotAddress: 192.0.2.10
+`,
+		"charts/istiod-remote/Chart.yaml": "apiVersion: v2\nname: istiod-remote\nversion: 1.23.4\n",
+	} {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	iop := &istiov1alpha1.IstioOperator{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "install.istio.io/v1alpha1", Kind: "IstioOperator"},
+		ObjectMeta: metav1.ObjectMeta{Name: "mesh", Namespace: "istio-system"},
+		Spec:       &istiov1alpha1.IstioOperatorSpec{InstallPackagePath: dir, Tag: structpb.NewStringValue("1.23.4")},
+	}
+	app, err := (&IstioOperatorReconciler{}).convertIopToHelmApp(context.Background(), iop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := app.Spec.Components; len(got) != 1 || got[0].Chart != "istiod-remote" ||
+		got[0].Name != "iop-mesh-istiod-remote" || got[0].Version != "1.23.4" {
+		t.Fatalf("legacy remote components = %v", got)
+	}
+	global := app.Spec.GlobalValues.GetFields()["global"].GetStructValue().GetFields()
+	if global["hub"].GetStringValue() != "custom.example/istio" ||
+		global["remotePilotAddress"].GetStringValue() != "192.0.2.10" {
+		t.Fatalf("custom install package values changed: %v", global)
+	}
+	iop.Spec.Tag = structpb.NewStringValue("1.24.6")
+	if app, err := (&IstioOperatorReconciler{}).convertIopToHelmApp(context.Background(), iop); err == nil {
+		t.Fatalf("legacy remote-only IOP unexpectedly produced a HelmApp on 1.24.6: %v", app)
+	}
+}
 
 func TestIstioOperatorReconciler_convertIopToHelmApp_WithSchemaValidation(t *testing.T) {
 	tests := []struct {

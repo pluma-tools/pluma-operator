@@ -325,6 +325,10 @@ func (r *HelmAppReconciler) reconcileComponent(ctx context.Context, helmApp *ope
 		componentStatus.Message = err.Error()
 		return
 	}
+	if _, err := schema.FixLegacyGatewaySchema(lChart); err != nil {
+		componentStatus.Message = err.Error()
+		return componentStatus, err
+	}
 
 	// Apply schema-based filtering if enabled for this component
 	if component.EnableSchemaValidation {
@@ -355,8 +359,10 @@ func (r *HelmAppReconciler) reconcileComponent(ctx context.Context, helmApp *ope
 			// Release doesn't exist, install it
 			release, err = install.Run(lChart, values)
 			if err != nil {
-				cLog.Error(err, "failed to install release")
-				multierror.Append(mErrs, fmt.Errorf("failed to install release: %v", err))
+				err = fmt.Errorf("failed to render release before install: %w", err)
+				componentStatus.Status = helmrelease.StatusFailed.String()
+				componentStatus.Message = err.Error()
+				return componentStatus, err
 			}
 			cLog.Info("Installed release", "component", component.Name)
 

@@ -3,9 +3,42 @@ package controller
 import (
 	"testing"
 
+	"helm.sh/helm/v3/pkg/chart"
+	"helm.sh/helm/v3/pkg/chartutil"
 	operatorv1alpha1 "pluma.io/api/operator/v1alpha1"
+	"pluma.io/pluma-operator/internal/pkg/schema"
 	"pluma.io/pluma-operator/internal/pkg/tools"
 )
+
+func TestLegacyGatewaySchemaKeepsHelmValidation(t *testing.T) {
+	for _, defaults := range []string{"defaults", "_internal_defaults_do_not_set"} {
+		t.Run(defaults, func(t *testing.T) {
+			cp := &chart.Chart{
+				Metadata: &chart.Metadata{Name: "gateway"},
+				Values:   map[string]any{defaults: map[string]any{"replicaCount": 1}},
+				Schema: []byte(`{
+					"$ref":"#/$defs/values",
+					"additionalProperties":false,
+					"$defs":{"values":{"type":"object","properties":{"replicaCount":{"type":"integer"}}}}
+				}`),
+			}
+			valid := map[string]any{defaults: cp.Values[defaults], "replicaCount": 2}
+			if err := chartutil.ValidateAgainstSchema(cp, valid); err == nil {
+				t.Fatal("expected the original schema to reject the gateway defaults")
+			}
+			if _, err := schema.FixLegacyGatewaySchema(cp); err != nil {
+				t.Fatal(err)
+			}
+			if err := chartutil.ValidateAgainstSchema(cp, valid); err != nil {
+				t.Fatalf("legacy defaults were rejected: %v", err)
+			}
+			valid["replicaCount"] = "invalid"
+			if err := chartutil.ValidateAgainstSchema(cp, valid); err == nil {
+				t.Fatal("expected Helm to enforce the replicaCount type")
+			}
+		})
+	}
+}
 
 func TestHelmAppReconciler_SchemaValidation_Logic(t *testing.T) {
 	tests := []struct {

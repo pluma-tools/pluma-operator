@@ -29,6 +29,8 @@ helm upgrade --install pluma-operator pluma-charts/pluma-operator --version=${VE
 
 ## Getting Started
 
+See the [Istio compatibility checks](docs/istio-compatibility.md) for Operator upgrades and Ambient deployments.
+
 ### Install Istio
 
 Use IstioOperator CRD
