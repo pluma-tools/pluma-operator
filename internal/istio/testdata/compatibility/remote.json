@@ -1,0 +1,149 @@
+{
+  "metadata": {
+    "name": "nicole-dmesh-mspider-mcpc",
+    "namespace": "istio-system",
+    "creationTimestamp": null,
+    "labels": {
+      "action.pluma.io/allow-froce-upgrade": "true",
+      "pluma.io/managed": "pluma-operator",
+      "pluma.io/source-from-iop": "nicole-dmesh-mspider-mcpc"
+    }
+  },
+  "spec": {
+    "components": [
+      {
+        "name": "iop-nicole-dmesh-mspider-mcpc-base",
+        "chart": "base",
+        "version": "1.22.2"
+      },
+      {
+        "name": "iop-nicole-dmesh-mspider-mcpc-istiod",
+        "chart": "istiod",
+        "version": "1.22.2",
+        "componentValues": {
+          "pilot": {
+            "resources": {
+              "limits": {
+                "cpu": "1500m",
+                "memory": "1500Mi"
+              },
+              "requests": {
+                "cpu": "200m",
+                "memory": "200Mi"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "istio-ingressgateway",
+        "chart": "gateway",
+        "version": "1.22.2",
+        "componentValues": {
+          "autoscaling": {
+            "enabled": true,
+            "minReplicas": "1"
+          },
+          "env": {},
+          "labels": {
+            "app": "istio-ingressgateway",
+            "istio": "ingressgateway"
+          },
+          "resources": {
+            "limits": {
+              "cpu": "1",
+              "memory": "900Mi"
+            },
+            "requests": {
+              "cpu": "50m",
+              "memory": "50Mi"
+            }
+          }
+        },
+        "enableSchemaValidation": true
+      }
+    ],
+    "globalValues": {
+      "defaultRevision": "",
+      "gateways": {
+        "istio-egressgateway": {},
+        "istio-ingressgateway": {
+          "autoscaleEnabled": true,
+          "autoscaleMin": "1"
+        }
+      },
+      "global": {
+        "configValidation": true,
+        "hub": "release-ci.daocloud.io/mspider",
+        "istioNamespace": "istio-system",
+        "meshID": "nicole-dmesh",
+        "multiCluster": {
+          "clusterName": "nicole-c1-k25-a24"
+        },
+        "proxy": {
+          "logLevel": "warning",
+          "resources": {
+            "limits": {
+              "cpu": "600m",
+              "memory": "512Mi"
+            },
+            "requests": {
+              "cpu": "100m",
+              "memory": "128Mi"
+            }
+          }
+        },
+        "tag": "1.22.2"
+      },
+      "meshConfig": {
+        "defaultConfig": {
+          "extraStatTags": [
+            "destination_mesh_id",
+            "source_mesh_id"
+          ],
+          "proxyMetadata": {
+            "ISTIO_META_DNS_AUTO_ALLOCATE": "true",
+            "ISTIO_META_DNS_CAPTURE": "true",
+            "WASM_INSECURE_REGISTRIES": "*"
+          },
+          "tracing": {
+            "sampling": 100
+          }
+        },
+        "enableTracing": true,
+        "extensionProviders": [
+          {
+            "name": "otel",
+            "opentelemetry": {
+              "port": 4317,
+              "service": "insight-agent-opentelemetry-collector.insight-system.svc.cluster.local"
+            }
+          }
+        ],
+        "outboundTrafficPolicy": {
+          "mode": "ALLOW_ANY"
+        }
+      },
+      "pilot": {
+        "autoscaleEnabled": true,
+        "autoscaleMin": "1",
+        "cni": {
+          "enabled": false
+        },
+        "enabled": true,
+        "replicaCount": "1"
+      },
+      "profile": "remote",
+      "sidecarInjectorWebhook": {
+        "enableNamespacesByDefault": false
+      },
+      "ztunnel": {
+        "resourceName": "ztunnel"
+      }
+    },
+    "repo": {
+      "name": "istio",
+      "url": "https://istio-release.storage.googleapis.com/charts"
+    }
+  }
+}
