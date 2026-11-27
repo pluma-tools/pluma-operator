@@ -27,6 +27,12 @@ helm repo update
 helm upgrade --install pluma-operator pluma-charts/pluma-operator --version=${VERSION} --create-namespace --namespace pluma-system
 ```
 
+### 版本维护
+
+PR 合并后，有仓库写权限的成员可在 PR 评论 `/cherry-pick release-0.1`，自动创建以目标发布分支为 base 的 cherry-pick PR。目标分支须已存在；冲突时工作流失败，需手动处理。多提交 PR 以 squash 或 rebase 合并时，GitHub 返回的单个合并提交无法安全区分这两种情况，需手动 cherry-pick。工作流使用仓库已有的 `APP_ID` 和 `APP_PRIVATE_KEY`，对应 GitHub App 须安装在本仓库并具有 Contents 和 Pull requests 写权限。
+
+在 GitHub Actions 的 **Create release** 中运行工作流，填写发布分支（如 `release-0.1`）、新标签（如 `v0.1.6`），可选填写用于比较的上一个标签。工作流从指定分支提交创建 GitHub Release，由 GitHub 根据标签差异生成发行说明，并启动现有镜像和 Chart 发布工作流。标签必须与分支的主次版本一致且尚不存在；指定上一个标签时，它必须是发布提交的祖先。发布流程的完成状态请查看 **Release Latest** 工作流。
+
 ## Getting Started
 
 ### Install Istio
