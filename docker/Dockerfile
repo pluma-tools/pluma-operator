@@ -1,10 +1,11 @@
 # Build stage
-FROM m.daocloud.io/docker.io/golang:1.23 AS builder
+FROM m.daocloud.io/docker.io/golang:1.26.11 AS builder
 
 WORKDIR /app
 
 # Copy go mod and sum files
-COPY go.mod go.sum apis ./
+COPY go.mod go.sum ./
+COPY apis ./apis
 
 # Download all dependencies
 RUN go mod download

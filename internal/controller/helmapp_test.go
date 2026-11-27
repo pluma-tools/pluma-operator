@@ -1,8 +1,12 @@
 package controller
 
 import (
+	"fmt"
 	"testing"
 
+	"helm.sh/helm/v3/pkg/chart"
+	"helm.sh/helm/v3/pkg/chartutil"
+	"helm.sh/helm/v3/pkg/engine"
 	operatorv1alpha1 "pluma.io/api/operator/v1alpha1"
 	"pluma.io/pluma-operator/internal/pkg/tools"
 )
@@ -208,6 +212,67 @@ func TestHelmAppReconciler_ValueMerging(t *testing.T) {
 			// Verify that values are merged correctly
 			if len(values) != tt.expectedCount {
 				t.Errorf("Values merged count = %v, want %v", len(values), tt.expectedCount)
+			}
+		})
+	}
+}
+
+// Exercise Helm values and rendering against the minor versions in mspider's cluster matrix.
+func TestHelmRenderingCompatibility(t *testing.T) {
+	ch := &chart.Chart{
+		Metadata: &chart.Metadata{Name: "compatibility", Version: "0.1.0", APIVersion: "v2"},
+		Values:   map[string]interface{}{"replicas": 1, "global": map[string]interface{}{"hub": "default"}},
+		Templates: []*chart.File{{Name: "templates/deployment.yaml", Data: []byte(`apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: {{ .Values.replicas }}
+  template:
+    spec:
+      containers:
+        - name: proxy
+          image: {{ .Values.global.hub }}/proxy:{{ .Values.tag }}
+`)}},
+	}
+	values := tools.MergeMaps(
+		map[string]interface{}{"global": map[string]interface{}{"hub": "registry.example.com"}, "tag": "1.25.5"},
+		map[string]interface{}{"replicas": 2},
+	)
+	const want = `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: istio-system
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: proxy
+          image: registry.example.com/proxy:1.25.5
+`
+	for minor := 22; minor <= 36; minor++ {
+		t.Run(fmt.Sprintf("1.%d", minor), func(t *testing.T) {
+			version, err := chartutil.ParseKubeVersion(fmt.Sprintf("v1.%d.0", minor))
+			if err != nil {
+				t.Fatal(err)
+			}
+			caps := chartutil.DefaultCapabilities.Copy()
+			caps.KubeVersion = *version
+			renderValues, err := chartutil.ToRenderValues(ch, values, chartutil.ReleaseOptions{
+				Name: "gateway", Namespace: "istio-system", Revision: 1, IsInstall: true,
+			}, caps)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rendered, err := engine.Render(ch, renderValues)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := rendered["compatibility/templates/deployment.yaml"]; got != want {
+				t.Errorf("rendering changed:\n%s", got)
 			}
 		})
 	}

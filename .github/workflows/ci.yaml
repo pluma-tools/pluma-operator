@@ -1,0 +1,59 @@
+name: Go CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check Go module (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ['.', 'apis']
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.module }}/go.mod
+          cache-dependency-path: |
+            go.sum
+            apis/go.sum
+      - name: Verify modules
+        run: |
+          go mod tidy -diff
+          go mod verify
+      - name: Vet
+        if: matrix.module == '.'
+        run: go vet ./...
+      - name: Vet API packages
+        if: matrix.module == 'apis'
+        # The existing protobuf DeepCopy generator copies MessageState; keep other vet checks enabled.
+        run: go vet -copylocks=false ./...
+      - name: Unit tests and race detection
+        run: go test -race -count=1 ./...
+      - name: Build API packages
+        if: matrix.module == 'apis'
+        run: go build ./...
+      - name: Build Linux release binaries
+        if: matrix.module == '.'
+        run: |
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -o "$RUNNER_TEMP/pluma-operator-$arch" ./cmd
+          done

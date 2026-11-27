@@ -2,15 +2,73 @@ package istio
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 	"istio.io/istio/operator/pkg/component"
 	"istio.io/istio/operator/pkg/render"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	istiov1alpha1 "pluma.io/api/istio/v1alpha1"
 	operatorv1alpha1 "pluma.io/api/operator/v1alpha1"
+	"pluma.io/pluma-operator/internal/pkg/constants"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/yaml"
 )
+
+func TestHelmAppUpdateCompatibility(t *testing.T) {
+	for _, managed := range []bool{true, false} {
+		t.Run(map[bool]string{true: "managed", false: "unmanaged"}[managed], func(t *testing.T) {
+			scheme := runtime.NewScheme()
+			if err := operatorv1alpha1.AddToScheme(scheme); err != nil {
+				t.Fatal(err)
+			}
+			labels := map[string]string{}
+			if managed {
+				labels[constants.ManagedLabel] = constants.ManagedLabelValue
+			}
+			existing := &operatorv1alpha1.HelmApp{
+				ObjectMeta: metav1.ObjectMeta{Name: "migration", Namespace: "istio-system", Labels: labels},
+				Spec:       &operatorv1alpha1.HelmAppSpec{Repo: &operatorv1alpha1.HelmRepo{Url: "https://old.example.com"}},
+				Status:     &operatorv1alpha1.HelmAppStatus{Phase: operatorv1alpha1.Phase_SUCCEEDED},
+			}
+			kube := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(existing).WithObjects(existing).Build()
+			r := &IstioOperatorReconciler{Client: kube, Scheme: scheme}
+			desired := existing.DeepCopy()
+			desired.Spec.Repo.Url = "https://new.example.com"
+			if err := r.createOrUpdateHelmApp(context.Background(), desired); err != nil {
+				t.Fatal(err)
+			}
+			got := &operatorv1alpha1.HelmApp{}
+			key := client.ObjectKeyFromObject(existing)
+			if err := kube.Get(context.Background(), key, got); err != nil {
+				t.Fatal(err)
+			}
+			wantSpec := existing.Spec
+			if managed {
+				wantSpec = desired.Spec
+			}
+			if !proto.Equal(got.Spec, wantSpec) || !proto.Equal(got.Status, existing.Status) {
+				t.Fatalf("spec or status changed unexpectedly: %v", got)
+			}
+			version := got.ResourceVersion
+			if err := r.createOrUpdateHelmApp(context.Background(), desired); err != nil {
+				t.Fatal(err)
+			}
+			if err := kube.Get(context.Background(), key, got); err != nil {
+				t.Fatal(err)
+			}
+			if got.ResourceVersion != version {
+				t.Error("replaying the same configuration should not update the resource")
+			}
+		})
+	}
+}
 
 func TestIstioOperatorReconciler_convertIopToHelmApp_WithSchemaValidation(t *testing.T) {
 	tests := []struct {
@@ -665,6 +723,48 @@ func TestIstioOperatorReconciler_convertIopToHelmApp_Autoscaling(t *testing.T) {
 				if minReplicas, ok := autoscalingMap["minReplicas"]; ok {
 					t.Errorf("autoscaling.minReplicas should not be present, got %v", minReplicas)
 				}
+			}
+		})
+	}
+}
+
+// Compare the complete migration output with snapshots captured before dependency upgrades.
+func TestMigrationCompatibility(t *testing.T) {
+	input, err := os.ReadFile("../../demo/iop.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, profile := range []string{"default", "remote", "ambient"} {
+		t.Run(profile, func(t *testing.T) {
+			iop := &istiov1alpha1.IstioOperator{}
+			if err := yaml.Unmarshal(input, iop); err != nil {
+				t.Fatal(err)
+			}
+			iop.Spec.Profile = profile
+			result, err := (&IstioOperatorReconciler{}).convertIopToHelmApp(context.Background(), iop)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := json.MarshalIndent(result, "", "  ")
+			if err != nil {
+				t.Fatal(err)
+			}
+			got = append(got, '\n')
+			path := filepath.Join("testdata", "compatibility", profile+".json")
+			if os.Getenv("UPDATE_COMPATIBILITY") == "1" {
+				if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, got, 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			want, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != string(want) {
+				t.Errorf("migration output changed from the pre-upgrade snapshot %s", path)
 			}
 		})
 	}
