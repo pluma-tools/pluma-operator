@@ -8,6 +8,12 @@ on:
       - "v*.*.*"
   pull_request:
     types: [opened, synchronize, labeled]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -26,10 +32,12 @@ jobs:
       HELM_CHARTS_DIR: manifests/pluma-operator
       HELM_CHART_NAME: pluma-operator
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref_type == 'tag' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'deploy'))
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref_type == 'tag') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'deploy'))
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -40,8 +48,13 @@ jobs:
 
       - name: Get tag name
         id: get_tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
+          if [[ $GITHUB_EVENT_NAME == workflow_dispatch ]]; then
+            [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+            echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          elif [[ $GITHUB_REF == refs/tags/* ]]; then
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
             echo "Building release version ${GITHUB_REF#refs/tags/}"
           else
