@@ -1,0 +1,63 @@
+name: Create release
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Release branch
+        required: true
+        default: release-0.1
+        type: string
+      tag:
+        description: New version tag (for example v0.1.6)
+        required: true
+        type: string
+      previous_tag:
+        description: Previous tag for release notes (optional; GitHub chooses when empty)
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: create-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+      - name: Create release and start publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_BRANCH: ${{ inputs.branch }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          PREVIOUS_TAG: ${{ inputs.previous_tag }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_BRANCH" =~ ^release-[0-9]+\.[0-9]+$ ]] || { echo 'Invalid release branch' >&2; exit 1; }
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid version tag' >&2; exit 1; }
+          [[ "$RELEASE_TAG" == "v${RELEASE_BRANCH#release-}."* ]] || { echo 'Tag does not match branch' >&2; exit 1; }
+          git fetch origin "+refs/heads/$RELEASE_BRANCH:refs/remotes/origin/$RELEASE_BRANCH" --tags
+          target=$(git rev-parse "refs/remotes/origin/$RELEASE_BRANCH^{commit}")
+          if git rev-parse -q --verify "refs/tags/$RELEASE_TAG" >/dev/null; then
+            echo 'Tag already exists' >&2; exit 1
+          fi
+          args=(--repo "$REPO" --target "$target" --title "$RELEASE_TAG" --generate-notes --fail-on-no-commits)
+          if [[ -n "$PREVIOUS_TAG" ]]; then
+            git rev-parse --verify "refs/tags/$PREVIOUS_TAG^{commit}" >/dev/null
+            git merge-base --is-ancestor "refs/tags/$PREVIOUS_TAG^{commit}" "$target"
+            args+=(--notes-start-tag "$PREVIOUS_TAG")
+          fi
+          gh release create "$RELEASE_TAG" "${args[@]}"
+          gh workflow run release.yaml --repo "$REPO" --ref "$DEFAULT_BRANCH" -f "tag=$RELEASE_TAG"
+          echo "Created $RELEASE_TAG at $target and started the publication workflow." >> "$GITHUB_STEP_SUMMARY"
